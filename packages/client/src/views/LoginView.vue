@@ -67,12 +67,6 @@ async function handleTokenLogin() {
       return;
     }
 
-    if (res.status === 429 || res.status === 503) {
-      errorMsg.value = t("login.tooManyAttempts");
-      loading.value = false;
-      return;
-    }
-
     setApiKey(key);
     router.replace("/hermes/chat");
   } catch {
@@ -96,11 +90,7 @@ async function handlePasswordLogin() {
     setApiKey(sessionToken);
     router.replace("/hermes/chat");
   } catch (err: any) {
-    if (err.status === 429 || err.status === 503) {
-      errorMsg.value = t("login.tooManyAttempts");
-    } else {
-      errorMsg.value = err.message || t("login.invalidCredentials");
-    }
+    errorMsg.value = err.message || t("login.invalidCredentials");
   } finally {
     loading.value = false;
   }

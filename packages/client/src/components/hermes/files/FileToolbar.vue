@@ -46,6 +46,7 @@ async function handleRefresh() {
 
 .file-toolbar {
   padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
 
   @media (max-width: $breakpoint-mobile) {
     padding: 8px 4px;

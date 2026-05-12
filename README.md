@@ -184,14 +184,14 @@ hermes-web-ui start
 
 ### Docker Compose
 
-Single-container deployment with integrated Hermes Agent:
+Run Web UI together with Hermes Agent:
 
 ```bash
 # Use pre-built image (Recommended)
-WEBUI_IMAGE=ekkoye8888/hermes-web-ui docker compose up -d
+WEBUI_IMAGE=ekkoye8888/hermes-web-ui:latest docker compose up -d hermes-agent hermes-webui
 
 # Or build from source
-docker compose up -d --build
+docker compose up -d --build hermes-agent hermes-webui
 
 docker compose logs -f hermes-webui
 ```
@@ -274,6 +274,12 @@ The BFF layer handles API proxy (with path rewriting), SSE streaming, file uploa
 
 <!-- If the chart above doesn't load, visit https://star-history.com/#EKKOLearnAI/hermes-web-ui -->
 
+## Sponsor
+
+如果你觉得这个项目对你有帮助，欢迎支持我：
+
+<a href="https://ifdian.net/a/ekko8888"><img src="https://img.shields.io/badge/Sponsor-%E7%88%B1%E5%8F%91%E7%94%B5-orange?style=flat-square" alt="Sponsor"/></a>
+
 ## License
 
-[BSL-1.1](./LICENSE)
+[MIT](./LICENSE)

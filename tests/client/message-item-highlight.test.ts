@@ -34,18 +34,6 @@ describe('MessageItem tool details', () => {
         writeText: vi.fn().mockResolvedValue(undefined),
       },
     })
-    Object.defineProperty(window, 'speechSynthesis', {
-      configurable: true,
-      value: {
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        getVoices: vi.fn(() => []),
-        speak: vi.fn(),
-        cancel: vi.fn(),
-        pause: vi.fn(),
-        resume: vi.fn(),
-      },
-    })
   })
 
   it('renders highlighted code blocks for tool arguments and tool results', async () => {

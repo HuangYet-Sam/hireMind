@@ -1,12 +1,10 @@
-import { startRunViaSocket, resumeSession, registerSessionHandlers, unregisterSessionHandlers, getChatRunSocket, type RunEvent, type ContentBlock as ContentBlockImport } from '@/api/hermes/chat'
+import { startRunViaSocket, resumeSession, registerSessionHandlers, unregisterSessionHandlers, type RunEvent, type ContentBlock as ContentBlockImport } from '@/api/hermes/chat'
 import { deleteSession as deleteSessionApi, fetchSession, fetchSessions, type HermesMessage, type SessionSummary } from '@/api/hermes/sessions'
 import { getApiKey } from '@/api/client'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useAppStore } from './app'
 import { useProfilesStore } from './profiles'
-import { useSettingsStore } from './settings'
-import { primeCompletionSound, playCompletionSound } from '@/utils/completion-sound'
 import { detectThinkingBoundary } from '@/utils/thinking-parser'
 
 // Re-export ContentBlock for convenience
@@ -27,7 +25,6 @@ export interface Message {
   content: string
   timestamp: number
   toolName?: string
-  toolCallId?: string
   toolPreview?: string
   toolArgs?: string
   toolResult?: string
@@ -40,7 +37,6 @@ export interface Message {
   //   2) 流式：由 reasoning.delta / thinking.delta / reasoning.available 事件累加
   // 不含 <think> 包裹标签；内容自身可以为多段纯文本。
   reasoning?: string
-  queued?: boolean
 }
 
 export interface Session {
@@ -123,18 +119,10 @@ async function buildContentBlocks(
 }
 
 function mapHermesMessages(msgs: HermesMessage[]): Message[] {
-  // Filter out assistant messages with empty content
-  const filteredMsgs = msgs.filter(m => {
-    if (m.role === 'assistant') {
-      return m.content && m.content.trim() !== ''
-    }
-    return true
-  })
-
   // Build lookups from assistant messages with tool_calls
   const toolNameMap = new Map<string, string>()
   const toolArgsMap = new Map<string, string>()
-  for (const msg of filteredMsgs) {
+  for (const msg of msgs) {
     if (msg.role === 'assistant' && msg.tool_calls) {
       for (const tc of msg.tool_calls) {
         if (tc.id) {
@@ -146,7 +134,7 @@ function mapHermesMessages(msgs: HermesMessage[]): Message[] {
   }
 
   const result: Message[] = []
-  for (const msg of filteredMsgs) {
+  for (const msg of msgs) {
     // Skip assistant messages that only contain tool_calls (no meaningful content)
     if (msg.role === 'assistant' && msg.tool_calls?.length && !msg.content?.trim()) {
       // Emit a tool.started message for each tool call
@@ -157,7 +145,6 @@ function mapHermesMessages(msgs: HermesMessage[]): Message[] {
           content: '',
           timestamp: Math.round(msg.timestamp * 1000),
           toolName: tc.function?.name || 'tool',
-          toolCallId: tc.id,
           toolArgs: tc.function?.arguments || undefined,
           toolStatus: 'done',
         })
@@ -193,7 +180,6 @@ function mapHermesMessages(msgs: HermesMessage[]): Message[] {
         content: '',
         timestamp: Math.round(msg.timestamp * 1000),
         toolName,
-        toolCallId: tcId || undefined,
         toolArgs,
         toolPreview: typeof preview === 'string' ? preview.slice(0, 100) || undefined : undefined,
         toolResult: msg.content || undefined,
@@ -233,6 +219,7 @@ function mapHermesSession(s: SessionSummary): Session {
 
 const STORAGE_KEY_PREFIX = 'hermes_active_session_'
 const LEGACY_STORAGE_KEY = 'hermes_active_session'
+const IN_FLIGHT_TTL_MS = 15 * 60 * 1000 // Give up after 15 minutes
 
 // 获取当前 profile 名称，用于隔离缓存。
 // 从 profiles store 的 activeProfileName（同步 localStorage）读取，
@@ -247,6 +234,22 @@ function getProfileName(): string {
 
 function storageKey(): string { return STORAGE_KEY_PREFIX + getProfileName() }
 function legacyStorageKey(): string | null { return getProfileName() === 'default' ? LEGACY_STORAGE_KEY : null }
+function inFlightKey(sid: string): string { return `hermes_in_flight_v1_${getProfileName()}_${sid}` }
+function legacyInFlightKey(sid: string): string | null { return getProfileName() === 'default' ? `hermes_in_flight_v1_${sid}` : null }
+
+interface InFlightRun {
+  runId: string
+  startedAt: number
+}
+
+function loadJson<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : null
+  } catch {
+    return null
+  }
+}
 
 function isQuotaExceededError(error: unknown): boolean {
   if (!error || typeof error !== 'object') return false
@@ -298,12 +301,37 @@ function setItemBestEffort(key: string, value: string) {
   }
 }
 
+function saveJson(key: string, value: unknown) {
+  try {
+    setItemBestEffort(key, JSON.stringify(value))
+  } catch {
+    // quota exceeded or private mode — ignore, cache is best-effort
+  }
+}
+
 function removeItem(key: string) {
   try {
     localStorage.removeItem(key)
   } catch {
     // ignore
   }
+}
+
+function loadJsonWithFallback<T>(key: string, legacyKey?: string | null): T | null {
+  const value = loadJson<T>(key)
+  if (value != null) return value
+  if (!legacyKey) return null
+  return loadJson<T>(legacyKey)
+}
+
+function saveJsonWithLegacy(key: string, value: unknown, legacyKey?: string | null) {
+  saveJson(key, value)
+  if (legacyKey) removeItem(legacyKey)
+}
+
+function removeItemWithLegacy(key: string, legacyKey?: string | null) {
+  removeItem(key)
+  if (legacyKey) removeItem(legacyKey)
 }
 
 // Strip the circular `file: File` reference from attachments before caching —
@@ -316,10 +344,6 @@ export const useChatStore = defineStore('chat', () => {
   const streamStates = ref<Map<string, { abort: () => void }>>(new Map())
   /** sessionId → server-reported isWorking status */
   const serverWorking = ref<Set<string>>(new Set())
-  /** sessionId → queued message count */
-  const queueLengths = ref<Map<string, number>>(new Map())
-  /** sessionId → queued user messages not yet visible in the transcript */
-  const queuedUserMessages = ref<Map<string, Message[]>>(new Map())
 
   // 自动播放语音开关
   const autoPlaySpeechEnabled = ref(false)
@@ -351,17 +375,6 @@ export const useChatStore = defineStore('chat', () => {
     compressionState.value = state
   }
 
-  const abortState = ref<{
-    aborting: boolean
-    synced: boolean | null
-    error?: string
-  } | null>(null)
-  const isAborting = computed(() => abortState.value?.aborting === true)
-
-  function setAbortState(state: typeof abortState.value) {
-    abortState.value = state
-  }
-
   const activeSession = ref<Session | null>(null)
   const messages = computed<Message[]>(() => activeSession.value?.messages || [])
 
@@ -369,11 +382,30 @@ export const useChatStore = defineStore('chat', () => {
     return streamStates.value.has(sessionId) || serverWorking.value.has(sessionId)
   }
 
+  function markInFlight(sid: string, runId: string) {
+    saveJsonWithLegacy(inFlightKey(sid), { runId, startedAt: Date.now() } as InFlightRun, legacyInFlightKey(sid))
+  }
+
+  function clearInFlight(sid: string) {
+    removeItemWithLegacy(inFlightKey(sid), legacyInFlightKey(sid))
+  }
+
+  function readInFlight(sid: string): InFlightRun | null {
+    const rec = loadJsonWithFallback<InFlightRun>(inFlightKey(sid), legacyInFlightKey(sid))
+    if (!rec) return null
+    if (Date.now() - rec.startedAt > IN_FLIGHT_TTL_MS) {
+      removeItemWithLegacy(inFlightKey(sid), legacyInFlightKey(sid))
+      return null
+    }
+    return rec
+  }
+
   async function loadSessions() {
     isLoadingSessions.value = true
     try {
       const list = await fetchSessions()
       const fresh = list.map(mapHermesSession)
+      const freshIds = new Set(fresh.map(s => s.id))
       // Preserve already-loaded messages for sessions that are still present,
       // so we don't blow away the active session's messages on refresh.
       const msgsByIdBefore = new Map(sessions.value.map(s => [s.id, s.messages]))
@@ -381,7 +413,19 @@ export const useChatStore = defineStore('chat', () => {
         const prev = msgsByIdBefore.get(s.id)
         if (prev && prev.length) s.messages = prev
       }
-      sessions.value = fresh
+      // Preserve local-only sessions the server hasn't seen yet — e.g. a chat
+      // that was just created and whose first run is still in-flight. Without
+      // this, refreshing mid-run would wipe the session and fall back to
+      // sessions[0], which is exactly what the user reported.
+      // Sessions without an active in-flight run are considered deleted and
+      // cleaned up along with their cached messages.
+      const localOnly = sessions.value.filter(s => {
+        if (freshIds.has(s.id)) return false
+        if (readInFlight(s.id)) return true
+        removeItemWithLegacy(inFlightKey(s.id), legacyInFlightKey(s.id))
+        return false
+      })
+      sessions.value = [...localOnly, ...fresh]
 
       // Restore last active session, fallback to most recent
       const savedId = activeSessionId.value
@@ -456,16 +500,6 @@ export const useChatStore = defineStore('chat', () => {
           } else {
             serverWorking.value.delete(sessionId)
           }
-          if (data.queueLength && data.queueLength > 0) {
-            queueLengths.value.set(sessionId, data.queueLength)
-          } else {
-            queueLengths.value.delete(sessionId)
-          }
-          if ((data as any).isAborting) {
-            setAbortState({ aborting: true, synced: null })
-          } else if (!data.isWorking) {
-            setAbortState(null)
-          }
           if (data.inputTokens != null) activeSession.value!.inputTokens = data.inputTokens
           if (data.outputTokens != null) activeSession.value!.outputTokens = data.outputTokens
           if (data.messages?.length) {
@@ -499,10 +533,6 @@ export const useChatStore = defineStore('chat', () => {
                   compressed: e.compressed ?? false,
                   error: e.error,
                 })
-              } else if (e.event === 'abort.started') {
-                setAbortState({ aborting: true, synced: null })
-              } else if (e.event === 'abort.completed') {
-                setAbortState({ aborting: false, synced: e.synced ?? false })
               }
             }
           }
@@ -516,7 +546,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     // Resume in-flight run event listeners if needed
-    resumeServerWorkingRun(sessionId)
+    resumeInFlightRun(sessionId)
   }
 
   function newChat() {
@@ -581,41 +611,6 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  function enqueueUserMessage(sessionId: string, message: Message) {
-    const queue = queuedUserMessages.value.get(sessionId) || []
-    queue.push({ ...message, queued: true })
-    queuedUserMessages.value.set(sessionId, queue)
-  }
-
-  function removeQueuedMessage(sessionId: string, messageId: string) {
-    const queue = queuedUserMessages.value.get(sessionId)
-    if (!queue?.length) return
-    const next = queue.filter(message => message.id !== messageId)
-    if (next.length > 0) {
-      queuedUserMessages.value.set(sessionId, next)
-    } else {
-      queuedUserMessages.value.delete(sessionId)
-    }
-    queueLengths.value.set(sessionId, next.length)
-    getChatRunSocket()?.emit('cancel_queued_run', {
-      session_id: sessionId,
-      queue_id: messageId,
-    })
-  }
-
-  function showNextQueuedUserMessage(sessionId: string) {
-    const queue = queuedUserMessages.value.get(sessionId)
-    if (!queue?.length) return
-    const next = queue.shift()!
-    if (queue.length > 0) {
-      queuedUserMessages.value.set(sessionId, queue)
-    } else {
-      queuedUserMessages.value.delete(sessionId)
-    }
-    addMessage(sessionId, { ...next, queued: false })
-    updateSessionTitle(sessionId)
-  }
-
   function updateSessionTitle(sessionId: string) {
     const target = sessions.value.find(s => s.id === sessionId)
     if (!target) return
@@ -631,22 +626,8 @@ export const useChatStore = defineStore('chat', () => {
     target.updatedAt = Date.now()
   }
 
-  function primeCompletionBellIfEnabled() {
-    if (useSettingsStore().display.bell_on_complete) {
-      primeCompletionSound()
-    }
-  }
-
-  function playCompletionBellIfEnabled() {
-    if (useSettingsStore().display.bell_on_complete) {
-      void playCompletionSound()
-    }
-  }
-
   async function sendMessage(content: string, attachments?: Attachment[]) {
-    if ((!content.trim() && !(attachments && attachments.length > 0))) return
-
-    primeCompletionBellIfEnabled()
+    if ((!content.trim() && !(attachments && attachments.length > 0)) || isStreaming.value) return
 
     if (!activeSession.value) {
       const session = createSession()
@@ -655,7 +636,6 @@ export const useChatStore = defineStore('chat', () => {
 
     // Capture session ID at send time — all callbacks use this, not activeSessionId
     const sid = activeSessionId.value!
-    const shouldQueue = isSessionLive(sid)
 
     const userMsg: Message = {
       id: uid(),
@@ -663,13 +643,12 @@ export const useChatStore = defineStore('chat', () => {
       content: content.trim(),
       timestamp: Date.now(),
       attachments: attachments && attachments.length > 0 ? attachments : undefined,
-      queued: shouldQueue,
     }
 
-    if (!shouldQueue) {
-      addMessage(sid, userMsg)
-      updateSessionTitle(sid)
-    }
+    addMessage(sid, userMsg)
+
+
+    updateSessionTitle(sid)
 
     try {
 
@@ -685,20 +664,13 @@ export const useChatStore = defineStore('chat', () => {
           const base = `/api/hermes/download?path=${encodeURIComponent(f.path)}&name=${encodeURIComponent(f.name)}`
           return [f.name, token ? `${base}&token=${encodeURIComponent(token)}` : base]
         }))
-        if (shouldQueue && userMsg.attachments) {
-          userMsg.attachments = userMsg.attachments.map(a => {
+        const msgs = getSessionMsgs(sid)
+        const lastUser = msgs.findLast(m => m.id === userMsg.id)
+        if (lastUser?.attachments) {
+          lastUser.attachments = lastUser.attachments.map(a => {
             const dl = urlMap.get(a.name)
             return dl ? { ...a, url: dl } : a
           })
-        } else {
-          const msgs = getSessionMsgs(sid)
-          const lastUser = msgs.findLast(m => m.id === userMsg.id)
-          if (lastUser?.attachments) {
-            lastUser.attachments = lastUser.attachments.map(a => {
-              const dl = urlMap.get(a.name)
-              return dl ? { ...a, url: dl } : a
-            })
-          }
         }
 
         // Build content blocks with uploaded file paths
@@ -714,42 +686,25 @@ export const useChatStore = defineStore('chat', () => {
         input,
         session_id: sid,
         model: sessionModel || undefined,
-        queue_id: userMsg.id,
-      }
-
-      if (shouldQueue) {
-        enqueueUserMessage(sid, userMsg)
       }
 
       // Helper to clean up this session's stream state
       const cleanup = () => {
+        console.log('[sendMessage] cleanup called, deleting stream state for sid:', sid)
         streamStates.value.delete(sid)
         serverWorking.value.delete(sid)
+        console.log('[sendMessage] cleanup done, isStreaming now:', isStreaming.value)
       }
 
-      // Per-active-run flags used to detect silently-swallowed errors at run.completed.
+      // Per-run flags used to detect silently-swallowed errors at run.completed.
       // hermes-agent occasionally emits run.completed with empty output and no
       // usage when the agent layer caught an upstream error (e.g. invalid API
       // key). We need to distinguish: (a) run with assistant text produced,
       // (b) run with only tool activity, (c) run with truly nothing visible.
-      // Reset on every run.started because one handler may span multiple queued runs.
+      // Reset per send() call — closures captured by Socket.IO callbacks are scoped
+      // to this run, so there is no cross-run contamination.
       let runProducedAssistantText = false
       let runHadToolActivity = false
-      let activeAssistantMessageId: string | null = null
-
-      const startNextQueuedUser = () => {
-        showNextQueuedUserMessage(sid)
-      }
-
-      const closeStreamingAssistant = () => {
-        const msgs = getSessionMsgs(sid)
-        msgs.forEach(m => {
-          if (m.role === 'assistant' && m.isStreaming) {
-            updateMessage(sid, m.id, { isStreaming: false })
-          }
-        })
-        activeAssistantMessageId = null
-      }
 
       // Send run via Socket.IO and listen to streamed events — all closures capture `sid`
       const ctrl = startRunViaSocket(
@@ -758,22 +713,7 @@ export const useChatStore = defineStore('chat', () => {
         (evt: RunEvent) => {
           switch (evt.event) {
             case 'run.started':
-              setAbortState(null)
-              runProducedAssistantText = false
-              runHadToolActivity = false
-              closeStreamingAssistant()
-              startNextQueuedUser()
-              if ((evt as any).queue_length > 0) {
-                queueLengths.value.set(sid, (evt as any).queue_length)
-              } else {
-                queueLengths.value.delete(sid)
-              }
               break
-
-            case 'run.queued': {
-              queueLengths.value.set(sid, (evt as any).queue_length || 0)
-              break
-            }
 
             case 'compression.started': {
               setCompressionState({
@@ -804,42 +744,13 @@ export const useChatStore = defineStore('chat', () => {
               break
             }
 
-            case 'abort.started': {
-              setAbortState({ aborting: true, synced: null })
-              break
-            }
-
-            case 'abort.completed': {
-              setAbortState({ aborting: false, synced: (evt as any).synced ?? false })
-              if ((evt as any).queue_length > 0) {
-                queueLengths.value.set(sid, (evt as any).queue_length)
-                setAbortState(null)
-                break
-              }
-              const msgs = getSessionMsgs(sid)
-              const lastMsg = msgs[msgs.length - 1]
-              if (lastMsg?.isStreaming) {
-                updateMessage(sid, lastMsg.id, { isStreaming: false })
-              }
-              msgs.forEach((m, i) => {
-                if (m.role === 'tool' && m.toolStatus === 'running') {
-                  msgs[i] = { ...m, toolStatus: 'done' }
-                }
-              })
-              cleanup()
-              setAbortState(null)
-              break
-            }
-
             case 'reasoning.delta':
             case 'thinking.delta': {
               const text = evt.text || evt.delta || ''
               if (!text) break
               runProducedAssistantText = true
               const msgs = getSessionMsgs(sid)
-              const last = activeAssistantMessageId
-                ? msgs.find(m => m.id === activeAssistantMessageId)
-                : null
+              const last = msgs[msgs.length - 1]
               if (last?.role === 'assistant' && last.isStreaming) {
                 last.reasoning = (last.reasoning || '') + text
                 noteReasoningStart(last.id)
@@ -853,7 +764,6 @@ export const useChatStore = defineStore('chat', () => {
                   isStreaming: true,
                   reasoning: text,
                 })
-                activeAssistantMessageId = newId
                 noteReasoningStart(newId)
               }
 
@@ -880,9 +790,7 @@ export const useChatStore = defineStore('chat', () => {
             case 'message.delta': {
               if (evt.delta) runProducedAssistantText = true
               const msgs = getSessionMsgs(sid)
-              const last = activeAssistantMessageId
-                ? msgs.find(m => m.id === activeAssistantMessageId)
-                : null
+              const last = msgs[msgs.length - 1]
               if (last?.role === 'assistant' && last.isStreaming) {
                 const prev = last.content
                 const next = prev + (evt.delta || '')
@@ -901,7 +809,6 @@ export const useChatStore = defineStore('chat', () => {
                   timestamp: Date.now(),
                   isStreaming: true,
                 })
-                activeAssistantMessageId = newId
               }
 
               break
@@ -910,25 +817,9 @@ export const useChatStore = defineStore('chat', () => {
             case 'tool.started': {
               runHadToolActivity = true
               const msgs = getSessionMsgs(sid)
-              const toolCallId = (evt as any).tool_call_id as string | undefined
-              const last = activeAssistantMessageId
-                ? msgs.find(m => m.id === activeAssistantMessageId)
-                : msgs[msgs.length - 1]
+              const last = msgs[msgs.length - 1]
               if (last?.isStreaming) {
                 updateMessage(sid, last.id, { isStreaming: false })
-              }
-              activeAssistantMessageId = null
-              const existingTool = toolCallId
-                ? msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
-                : null
-              if (existingTool) {
-                updateMessage(sid, existingTool.id, {
-                  toolName: evt.tool || evt.name,
-                  toolArgs: typeof (evt as any).arguments === 'string' ? (evt as any).arguments : existingTool.toolArgs,
-                  toolPreview: evt.preview || existingTool.toolPreview,
-                  toolStatus: existingTool.toolStatus || 'running',
-                })
-                break
               }
               addMessage(sid, {
                 id: uid(),
@@ -936,9 +827,7 @@ export const useChatStore = defineStore('chat', () => {
                 content: '',
                 timestamp: Date.now(),
                 toolName: evt.tool || evt.name,
-                toolCallId,
                 toolPreview: evt.preview,
-                toolArgs: typeof (evt as any).arguments === 'string' ? (evt as any).arguments : undefined,
                 toolStatus: 'running',
               })
 
@@ -948,10 +837,9 @@ export const useChatStore = defineStore('chat', () => {
             case 'tool.completed': {
               runHadToolActivity = true
               const msgs = getSessionMsgs(sid)
-              const toolCallId = (evt as any).tool_call_id as string | undefined
-              const toolMsgs = toolCallId
-                ? msgs.filter(m => m.role === 'tool' && m.toolCallId === toolCallId)
-                : msgs.filter(m => m.role === 'tool' && m.toolStatus === 'running')
+              const toolMsgs = msgs.filter(
+                m => m.role === 'tool' && m.toolStatus === 'running',
+              )
               if (toolMsgs.length > 0) {
                 const last = toolMsgs[toolMsgs.length - 1]
                 // Check if tool errored
@@ -960,7 +848,6 @@ export const useChatStore = defineStore('chat', () => {
                 updateMessage(sid, last.id, {
                   toolStatus: hasError ? 'error' : 'done',
                   toolDuration: duration,
-                  toolResult: typeof (evt as any).output === 'string' ? (evt as any).output : undefined,
                 })
               }
 
@@ -969,9 +856,7 @@ export const useChatStore = defineStore('chat', () => {
 
             case 'run.completed': {
               const msgs = getSessionMsgs(sid)
-              const lastMsg = activeAssistantMessageId
-                ? msgs.find(m => m.id === activeAssistantMessageId)
-                : msgs[msgs.length - 1]
+              const lastMsg = msgs[msgs.length - 1]
               if (lastMsg?.isStreaming) {
                 updateMessage(sid, lastMsg.id, { isStreaming: false })
               }
@@ -994,9 +879,7 @@ export const useChatStore = defineStore('chat', () => {
               if ((evt as any).parsed_content !== undefined) {
                 // Backend has parsed stringified array format, update last assistant message
                 const msgs = getSessionMsgs(sid)
-                const lastAssistant = activeAssistantMessageId
-                  ? msgs.find(m => m.id === activeAssistantMessageId)
-                  : [...msgs].reverse().find(m => m.role === 'assistant')
+                const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant')
                 if (lastAssistant) {
                   updateMessage(sid, lastAssistant.id, {
                     content: (evt as any).parsed_content || '',
@@ -1043,11 +926,10 @@ export const useChatStore = defineStore('chat', () => {
                   content: 'Error: Agent returned no output. The model call may have failed (e.g. invalid API key, model not supported by provider, or context exceeded). Check the hermes-agent logs for details.',
                   timestamp: Date.now(),
                 })
-              } else {
-                playCompletionBellIfEnabled()
               }
 
               // 自动播放语音
+              console.log('[run.completed] autoPlaySpeechEnabled:', autoPlaySpeechEnabled.value)
               if (autoPlaySpeechEnabled.value) {
                 const msgs = getSessionMsgs(sid)
                 const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant')
@@ -1059,13 +941,15 @@ export const useChatStore = defineStore('chat', () => {
                 }
               }
 
-              if ((evt as any).queue_remaining > 0) {
-                queueLengths.value.set(sid, (evt as any).queue_remaining)
-              } else {
-                cleanup()
-              }
-              activeAssistantMessageId = null
+              cleanup()
               updateSessionTitle(sid)
+              // the in-flight marker. If the browser is reloading right now
+              // and kills us between the two localStorage writes, we want
+              // the next page load to still see in-flight === true (so
+              // polling kicks in and recovers) rather than the other way
+              // around (cleared in-flight + stale streaming cache = UI stuck).
+
+              clearInFlight(sid)
               break
             }
 
@@ -1091,11 +975,9 @@ export const useChatStore = defineStore('chat', () => {
                   msgs[i] = { ...m, toolStatus: 'error' }
                 }
               })
-              if ((evt as any).queue_remaining > 0) {
-                queueLengths.value.set(sid, (evt as any).queue_remaining)
-              } else {
-                cleanup()
-              }
+              cleanup()
+
+              clearInFlight(sid)
               break
             }
 
@@ -1111,6 +993,7 @@ export const useChatStore = defineStore('chat', () => {
         },
         // onDone
         () => {
+          console.log('[sendMessage] onDone callback called, cleaning up stream state')
           const msgs = getSessionMsgs(sid)
           const last = msgs[msgs.length - 1]
           if (last?.isStreaming) {
@@ -1137,7 +1020,10 @@ export const useChatStore = defineStore('chat', () => {
             void refreshActiveSession()
           }
         },
-        undefined,
+        // onStarted — called when server acks with run_id
+        (runId: string) => {
+          markInFlight(sid, runId)
+        },
       )
 
       streamStates.value.set(sid, ctrl)
@@ -1156,16 +1042,15 @@ export const useChatStore = defineStore('chat', () => {
    * Emits 'resume' to join the session room on the server,
    * then sets up event listeners to receive ongoing events.
    */
-  function resumeServerWorkingRun(sid: string) {
+  function resumeInFlightRun(sid: string) {
     // Don't register duplicate listeners if already streaming
     if (streamStates.value.has(sid)) return
-    // Only set up listeners if the server reported an active run during resume.
-    if (!serverWorking.value.has(sid)) return
+    // Only set up listeners if there's an actual in-flight run
+    if (!readInFlight(sid)) return
 
     let closed = false
     let runProducedAssistantText = false
     let runHadToolActivity = false
-    let activeAssistantMessageId: string | null = null
 
     const cleanup = () => {
       if (closed) return
@@ -1176,42 +1061,13 @@ export const useChatStore = defineStore('chat', () => {
       unregisterSessionHandlers(sid)
     }
 
-    const startNextQueuedUser = () => {
-      showNextQueuedUserMessage(sid)
-    }
-
-    const closeStreamingAssistant = () => {
-      const msgs = getSessionMsgs(sid)
-      msgs.forEach(m => {
-        if (m.role === 'assistant' && m.isStreaming) {
-          updateMessage(sid, m.id, { isStreaming: false })
-        }
-      })
-      activeAssistantMessageId = null
-    }
-
     // Shared event handler — filters by session_id tag
     function handleEvent(evt: RunEvent) {
       if (closed) return
       // Filter events for this session (server tags all events with session_id)
       if (evt.session_id && evt.session_id !== sid) return
       switch (evt.event) {
-        case 'run.queued': {
-          queueLengths.value.set(sid, (evt as any).queue_length || 0)
-          break
-        }
-
         case 'run.started':
-          setAbortState(null)
-          runProducedAssistantText = false
-          runHadToolActivity = false
-          closeStreamingAssistant()
-          startNextQueuedUser()
-          if ((evt as any).queue_length > 0) {
-            queueLengths.value.set(sid, (evt as any).queue_length)
-          } else {
-            queueLengths.value.delete(sid)
-          }
           break
 
         case 'compression.started': {
@@ -1242,42 +1098,13 @@ export const useChatStore = defineStore('chat', () => {
           break
         }
 
-        case 'abort.started': {
-          setAbortState({ aborting: true, synced: null })
-          break
-        }
-
-        case 'abort.completed': {
-          setAbortState({ aborting: false, synced: (evt as any).synced ?? false })
-          if ((evt as any).queue_length > 0) {
-            queueLengths.value.set(sid, (evt as any).queue_length)
-            setAbortState(null)
-            break
-          }
-          const msgs = getSessionMsgs(sid)
-          const lastMsg = msgs[msgs.length - 1]
-          if (lastMsg?.isStreaming) {
-            updateMessage(sid, lastMsg.id, { isStreaming: false })
-          }
-          msgs.forEach((m, i) => {
-            if (m.role === 'tool' && m.toolStatus === 'running') {
-              msgs[i] = { ...m, toolStatus: 'done' }
-            }
-          })
-          cleanup()
-          setAbortState(null)
-          break
-        }
-
         case 'reasoning.delta':
         case 'thinking.delta': {
           const text = evt.text || evt.delta || ''
           if (!text) break
           runProducedAssistantText = true
           const msgs = getSessionMsgs(sid)
-          const last = activeAssistantMessageId
-            ? msgs.find(m => m.id === activeAssistantMessageId)
-            : null
+          const last = msgs[msgs.length - 1]
           if (last?.role === 'assistant' && last.isStreaming) {
             last.reasoning = (last.reasoning || '') + text
             noteReasoningStart(last.id)
@@ -1291,7 +1118,6 @@ export const useChatStore = defineStore('chat', () => {
               isStreaming: true,
               reasoning: text,
             })
-            activeAssistantMessageId = newId
             noteReasoningStart(newId)
           }
 
@@ -1311,9 +1137,7 @@ export const useChatStore = defineStore('chat', () => {
         case 'message.delta': {
           if (evt.delta) runProducedAssistantText = true
           const msgs = getSessionMsgs(sid)
-          const last = activeAssistantMessageId
-            ? msgs.find(m => m.id === activeAssistantMessageId)
-            : null
+          const last = msgs[msgs.length - 1]
           if (last?.role === 'assistant' && last.isStreaming) {
             const prev = last.content
             const next = prev + (evt.delta || '')
@@ -1331,7 +1155,6 @@ export const useChatStore = defineStore('chat', () => {
               timestamp: Date.now(),
               isStreaming: true,
             })
-            activeAssistantMessageId = newId
           }
 
           break
@@ -1340,25 +1163,9 @@ export const useChatStore = defineStore('chat', () => {
         case 'tool.started': {
           runHadToolActivity = true
           const msgs = getSessionMsgs(sid)
-          const toolCallId = (evt as any).tool_call_id as string | undefined
-          const last = activeAssistantMessageId
-            ? msgs.find(m => m.id === activeAssistantMessageId)
-            : msgs[msgs.length - 1]
+          const last = msgs[msgs.length - 1]
           if (last?.isStreaming) {
             updateMessage(sid, last.id, { isStreaming: false })
-          }
-          activeAssistantMessageId = null
-          const existingTool = toolCallId
-            ? msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
-            : null
-          if (existingTool) {
-            updateMessage(sid, existingTool.id, {
-              toolName: evt.tool || evt.name,
-              toolArgs: typeof (evt as any).arguments === 'string' ? (evt as any).arguments : existingTool.toolArgs,
-              toolPreview: evt.preview || existingTool.toolPreview,
-              toolStatus: existingTool.toolStatus || 'running',
-            })
-            break
           }
           addMessage(sid, {
             id: uid(),
@@ -1366,9 +1173,7 @@ export const useChatStore = defineStore('chat', () => {
             content: '',
             timestamp: Date.now(),
             toolName: evt.tool || evt.name,
-            toolCallId,
             toolPreview: evt.preview,
-            toolArgs: typeof (evt as any).arguments === 'string' ? (evt as any).arguments : undefined,
             toolStatus: 'running',
           })
 
@@ -1378,16 +1183,12 @@ export const useChatStore = defineStore('chat', () => {
         case 'tool.completed': {
           runHadToolActivity = true
           const msgs = getSessionMsgs(sid)
-          const toolCallId = (evt as any).tool_call_id as string | undefined
-          const toolMsgs = toolCallId
-            ? msgs.filter(m => m.role === 'tool' && m.toolCallId === toolCallId)
-            : msgs.filter(m => m.role === 'tool' && m.toolStatus === 'running')
+          const toolMsgs = msgs.filter(m => m.role === 'tool' && m.toolStatus === 'running')
           if (toolMsgs.length > 0) {
             const hasError = (evt as any).error === true
             updateMessage(sid, toolMsgs[toolMsgs.length - 1].id, {
               toolStatus: hasError ? 'error' : 'done',
               toolDuration: (evt as any).duration,
-              toolResult: typeof (evt as any).output === 'string' ? (evt as any).output : undefined,
             })
           }
 
@@ -1395,16 +1196,8 @@ export const useChatStore = defineStore('chat', () => {
         }
 
         case 'run.completed': {
-          const hasQueue = (evt as any).queue_remaining > 0
-          if (hasQueue) {
-            queueLengths.value.set(sid, (evt as any).queue_remaining)
-          } else {
-            queueLengths.value.delete(sid)
-          }
           const msgs = getSessionMsgs(sid)
-          const lastMsg = activeAssistantMessageId
-            ? msgs.find(m => m.id === activeAssistantMessageId)
-            : msgs[msgs.length - 1]
+          const lastMsg = msgs[msgs.length - 1]
           if (lastMsg?.isStreaming) {
             updateMessage(sid, lastMsg.id, { isStreaming: false })
           }
@@ -1421,9 +1214,7 @@ export const useChatStore = defineStore('chat', () => {
           if ((evt as any).parsed_content !== undefined) {
             // Backend has parsed stringified array format, update last assistant message
             const msgs = getSessionMsgs(sid)
-            const lastAssistant = activeAssistantMessageId
-              ? msgs.find(m => m.id === activeAssistantMessageId)
-              : [...msgs].reverse().find(m => m.role === 'assistant')
+            const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant')
             if (lastAssistant) {
               updateMessage(sid, lastAssistant.id, {
                 content: (evt as any).parsed_content || '',
@@ -1456,39 +1247,17 @@ export const useChatStore = defineStore('chat', () => {
               content: 'Error: Agent returned no output. The model call may have failed (e.g. invalid API key, model not supported by provider, or context exceeded). Check the hermes-agent logs for details.',
               timestamp: Date.now(),
             })
-          } else {
-            playCompletionBellIfEnabled()
           }
 
-          // Auto-play speech for every completed assistant message
-          if (autoPlaySpeechEnabled.value) {
-            const msgs = getSessionMsgs(sid)
-            const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant')
-            if (lastAssistant?.content) {
-              setTimeout(() => {
-                playMessageSpeech(lastAssistant.id, lastAssistant.content)
-              }, 300)
-            }
-          }
 
-          if (!hasQueue) {
-            cleanup()
-            activeAssistantMessageId = null
-          } else {
-            // More runs pending — reset for next run but don't cleanup
-            activeAssistantMessageId = null
-          }
+          cleanup()
           updateSessionTitle(sid)
+
+          clearInFlight(sid)
           break
         }
 
         case 'run.failed': {
-          const hasQueue = (evt as any).queue_remaining > 0
-          if (hasQueue) {
-            queueLengths.value.set(sid, (evt as any).queue_remaining)
-          } else {
-            queueLengths.value.delete(sid)
-          }
           const msgs = getSessionMsgs(sid)
           const lastErr = msgs[msgs.length - 1]
           if (lastErr?.isStreaming) {
@@ -1510,9 +1279,9 @@ export const useChatStore = defineStore('chat', () => {
               msgs[i] = { ...m, toolStatus: 'error' }
             }
           })
-          if (!hasQueue) {
-            cleanup()
-          }
+          cleanup()
+
+          clearInFlight(sid)
           break
         }
 
@@ -1540,45 +1309,32 @@ export const useChatStore = defineStore('chat', () => {
       onRunFailed: (evt) => handleEvent(evt),
       onCompressionStarted: (evt) => handleEvent(evt),
       onCompressionCompleted: (evt) => handleEvent(evt),
-      onAbortStarted: (evt) => handleEvent(evt),
-      onAbortCompleted: (evt) => handleEvent(evt),
       onUsageUpdated: (evt) => handleEvent(evt),
-      onRunQueued: (evt) => handleEvent(evt),
     })
 
     // No need to emit resume here — switchSession already did it.
     // Server already joined room and replayed events.
     // Just set up handlers for ongoing streaming events.
 
-    // Mark as streaming so UI shows the indicator and can still abort after refresh.
-    streamStates.value.set(sid, {
-      abort: () => {
-        getChatRunSocket()?.emit('abort', { session_id: sid })
-      },
-    })
+    // Mark as streaming so UI shows the indicator
+    streamStates.value.set(sid, { abort: cleanup })
   }
 
   function stopStreaming() {
     const sid = activeSessionId.value
     if (!sid) return
-    if (isAborting.value) return
     const ctrl = streamStates.value.get(sid)
     if (ctrl) {
-      setAbortState({ aborting: true, synced: null })
       ctrl.abort()
       const msgs = getSessionMsgs(sid)
       const lastMsg = msgs[msgs.length - 1]
       if (lastMsg?.isStreaming) {
         updateMessage(sid, lastMsg.id, { isStreaming: false })
       }
-      window.setTimeout(() => {
-        if (activeSessionId.value === sid && abortState.value?.aborting) {
-          streamStates.value.delete(sid)
-          serverWorking.value.delete(sid)
-          setAbortState(null)
-        }
-      }, 20_000)
+      streamStates.value.delete(sid)
+      serverWorking.value.delete(sid)
     }
+    clearInFlight(sid)
   }
 
   // Tab visibility: re-sync when returning to foreground
@@ -1589,21 +1345,11 @@ export const useChatStore = defineStore('chat', () => {
         if (sid && !streamStates.value.has(sid)) {
           // Re-load messages via resume (server loads from DB)
           resumeSession(sid, (data) => {
-            if (data.isWorking) {
-              serverWorking.value.add(sid)
-            } else {
-              serverWorking.value.delete(sid)
-            }
-            if (data.isAborting) {
-              setAbortState({ aborting: true, synced: null })
-            } else if (!data.isWorking) {
-              setAbortState(null)
-            }
             if (data.messages?.length && activeSession.value) {
               activeSession.value.messages = mapHermesMessages(data.messages as any[])
             }
-            resumeServerWorkingRun(sid)
           })
+          resumeInFlightRun(sid)
         }
       }
     })
@@ -1685,11 +1431,6 @@ export const useChatStore = defineStore('chat', () => {
     isRunActive,
     isSessionLive,
     compressionState,
-    abortState,
-    isAborting,
-    queueLengths,
-    queuedUserMessages,
-    removeQueuedMessage,
     isLoadingSessions,
     sessionsLoaded,
     isLoadingMessages,

@@ -63,7 +63,7 @@ function handleClose() {
           <FilesPanel />
         </div>
         <div v-show="activeTab === 'terminal'" class="drawer-pane">
-          <TerminalPanel :visible="activeTab === 'terminal' && show" />
+          <TerminalPanel />
         </div>
       </div>
     </div>

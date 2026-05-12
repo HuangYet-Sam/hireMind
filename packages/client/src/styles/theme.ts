@@ -146,15 +146,6 @@ export const darkThemeOverrides: GlobalThemeOverrides = {
   },
 }
 
-export function getThemeOverrides(isDark: boolean, isComic?: boolean): GlobalThemeOverrides {
-  const base = isDark ? darkThemeOverrides : lightThemeOverrides
-  if (!isComic) return base
-  const comicFont = "'Comic Neue', 'ZCOOL KuaiLe', 'Zen Maru Gothic', 'Gaegu', cursive, sans-serif"
-  return {
-    ...base,
-    common: {
-      ...base.common!,
-      fontFamily: comicFont,
-    },
-  }
+export function getThemeOverrides(isDark: boolean): GlobalThemeOverrides {
+  return isDark ? darkThemeOverrides : lightThemeOverrides
 }

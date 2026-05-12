@@ -1,3 +1,4 @@
+import { emitWebhook } from '../services/hermes/hermes'
 import { logger } from '../services/logger'
 
 export async function handleWebhook(ctx: any) {
@@ -8,5 +9,6 @@ export async function handleWebhook(ctx: any) {
     return
   }
   logger.info('Received webhook event: %s', payload.event)
+  emitWebhook(payload)
   ctx.body = { ok: true }
 }

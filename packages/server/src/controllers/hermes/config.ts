@@ -1,14 +1,12 @@
 import { readFile, writeFile, copyFile } from 'fs/promises'
 import YAML from 'js-yaml'
-import { getGatewayManagerInstance } from '../../services/gateway-bootstrap'
+import { restartGateway } from '../../services/hermes/hermes-cli'
 import { getActiveConfigPath, getActiveEnvPath } from '../../services/hermes/hermes-profile'
 import { saveEnvValue } from '../../services/config-helpers'
-import { logger } from '../../services/logger'
 
 const PLATFORM_SECTIONS = new Set([
   'telegram', 'discord', 'slack', 'whatsapp', 'matrix',
   'weixin', 'wecom', 'feishu', 'dingtalk',
-  'approvals',
 ])
 
 const configPath = () => getActiveConfigPath()
@@ -91,18 +89,13 @@ async function readEnvPlatforms(): Promise<Record<string, any>> {
 
 async function readConfig(): Promise<Record<string, any>> {
   const raw = await readFile(configPath(), 'utf-8')
-  return (YAML.load(raw, { json: true }) as Record<string, any>) || {}
+  return (YAML.load(raw) as Record<string, any>) || {}
 }
 
 async function writeConfig(data: Record<string, any>): Promise<void> {
   const cp = configPath()
   await copyFile(cp, cp + '.bak')
-  const yamlStr = YAML.dump(data, {
-    lineWidth: -1,
-    noRefs: true,
-    quotingType: '"',
-    forceQuotes: true, // Force quotes on all string values
-  })
+  const yamlStr = YAML.dump(data, { lineWidth: -1, noRefs: true, quotingType: '"', forceQuotes: false })
   await writeFile(cp, yamlStr, 'utf-8')
 }
 
@@ -142,21 +135,7 @@ export async function updateConfig(ctx: any) {
     const config = await readConfig()
     config[section] = deepMerge(config[section] || {}, values)
     await writeConfig(config)
-
-    // 使用 GatewayManager 重启平台网关
-    if (PLATFORM_SECTIONS.has(section)) {
-      const mgr = getGatewayManagerInstance()
-      if (mgr) {
-        try {
-          const activeProfile = mgr.getActiveProfile()
-          await mgr.stop(activeProfile)
-          await mgr.start(activeProfile)
-        } catch (err) {
-          logger.error(err, 'GatewayManager restart failed')
-        }
-      }
-    }
-
+    if (PLATFORM_SECTIONS.has(section)) { await restartGateway() }
     ctx.body = { success: true }
   } catch (err: any) {
     ctx.status = 500; ctx.body = { error: err.message }
@@ -204,19 +183,7 @@ export async function updateCredentials(ctx: any) {
       }
     }
     if (configChanged) { await writeConfig(config) }
-
-    // 使用 GatewayManager 重启平台网关
-    const mgr = getGatewayManagerInstance()
-    if (mgr) {
-      try {
-        const activeProfile = mgr.getActiveProfile()
-        await mgr.stop(activeProfile)
-        await mgr.start(activeProfile)
-      } catch (err) {
-        logger.error(err, 'GatewayManager restart failed')
-      }
-    }
-
+    await restartGateway()
     ctx.body = { success: true }
   } catch (err: any) {
     ctx.status = 500; ctx.body = { error: err.message }

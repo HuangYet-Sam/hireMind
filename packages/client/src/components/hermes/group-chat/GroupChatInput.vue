@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton } from 'naive-ui'
+import { NButton, NDropdown } from 'naive-ui'
 import { useGroupChatStore } from '@/stores/hermes/group-chat'
+import type { DropdownOption } from 'naive-ui'
 
 const { t } = useI18n()
 const emit = defineEmits<{ send: [content: string] }>()
@@ -10,7 +11,6 @@ const store = useGroupChatStore()
 
 const inputText = ref('')
 const textareaRef = ref<HTMLTextAreaElement>()
-const dropdownRef = ref<HTMLDivElement>()
 const isComposing = ref(false)
 
 // ─── Mention State ───────────────────────────────────────
@@ -20,8 +20,6 @@ const mentionQuery = ref('')
 const mentionStartIndex = ref(-1)
 const dropdownX = ref(0)
 const dropdownY = ref(0)
-const dropdownBottom = ref(0)
-const placement = ref<'bottom' | 'top'>('bottom')
 const activeIndex = ref(0)
 
 const filteredAgents = computed(() => {
@@ -29,17 +27,15 @@ const filteredAgents = computed(() => {
     return store.agents.filter(a => a.name.toLowerCase().includes(query))
 })
 
+const dropdownOptions = computed<DropdownOption[]>(() => {
+    return filteredAgents.value.map((a, i) => ({
+        label: `${a.name}  (${a.profile})`,
+        key: a.name,
+        index: i,
+    }))
+})
+
 const canSend = computed(() => !!inputText.value.trim())
-
-// ─── Scroll active item into view ──────────────────────
-
-function scrollToActive() {
-    nextTick(() => {
-        if (!dropdownRef.value) return
-        const active = dropdownRef.value.querySelector('.active') as HTMLElement | null
-        if (active) active.scrollIntoView({ block: 'nearest', behavior: 'instant' })
-    })
-}
 
 // ─── Mention Logic ───────────────────────────────────────
 
@@ -94,19 +90,7 @@ function updateMentionState() {
     document.body.removeChild(mirror)
 
     dropdownX.value = rect.left + mirrorRect.width - el.scrollLeft
-
-    // Decide placement: if dropdown would go below viewport, flip upward
-    const estimatedHeight = Math.min(filteredAgents.value.length * 36 + 8, 240)
-    const spaceBelow = window.innerHeight - rect.top + el.scrollTop - 8
-    if (spaceBelow < estimatedHeight && rect.top - el.scrollTop - 8 > estimatedHeight) {
-        placement.value = 'top'
-        dropdownY.value = rect.top - el.scrollTop - 8
-    } else {
-        placement.value = 'bottom'
-        dropdownY.value = rect.top - el.scrollTop - 8
-    }
-
-    dropdownBottom.value = window.innerHeight - dropdownY.value
+    dropdownY.value = rect.top - el.scrollTop - 8
 
     mentionActive.value = filteredAgents.value.length > 0
 }
@@ -134,18 +118,16 @@ function selectMention(name: string) {
 // ─── Event Handlers ──────────────────────────────────────
 
 function handleKeydown(e: KeyboardEvent) {
-    // Mention navigation — fully custom, no NDropdown interference
+    // Mention navigation
     if (mentionActive.value && filteredAgents.value.length > 0) {
         if (e.key === 'ArrowDown') {
             e.preventDefault()
             activeIndex.value = (activeIndex.value + 1) % filteredAgents.value.length
-            scrollToActive()
             return
         }
         if (e.key === 'ArrowUp') {
             e.preventDefault()
             activeIndex.value = (activeIndex.value - 1 + filteredAgents.value.length) % filteredAgents.value.length
-            scrollToActive()
             return
         }
         if (e.key === 'Enter' || e.key === 'Tab') {
@@ -192,31 +174,13 @@ function handleInput(e: Event) {
     }
 }
 
-function handleMentionClick(name: string) {
-    selectMention(name)
+function handleDropdownSelect(key: string) {
+    selectMention(key)
 }
 
-function handleMentionHover(index: number) {
-    activeIndex.value = index
+function handleDropdownClickOutside() {
+    mentionActive.value = false
 }
-
-// ─── Click outside to close dropdown ─────────────────
-
-function onDocumentMousedown(e: MouseEvent) {
-    if (!mentionActive.value) return
-    const target = e.target as HTMLElement
-    if (!target.closest('.mention-dropdown')) {
-        mentionActive.value = false
-    }
-}
-
-onMounted(() => {
-    document.addEventListener('mousedown', onDocumentMousedown)
-})
-
-onUnmounted(() => {
-    document.removeEventListener('mousedown', onDocumentMousedown)
-})
 
 function handleCompositionStart() {
     isComposing.value = true
@@ -258,31 +222,17 @@ function handleCompositionEnd() {
                 </NButton>
             </div>
         </div>
-        <Transition name="dropdown-fade">
-            <div
-                v-if="mentionActive && filteredAgents.length > 0"
-                ref="dropdownRef"
-                class="mention-dropdown"
-                :class="{ 'placement-top': placement === 'top' }"
-                :style="{
-                    left: dropdownX + 'px',
-                    top: placement === 'bottom' ? dropdownY + 'px' : 'auto',
-                    bottom: placement === 'top' ? dropdownBottom + 'px' : 'auto',
-                }"
-            >
-                <div
-                    v-for="(agent, i) in filteredAgents"
-                    :key="agent.name"
-                    class="mention-dropdown-item"
-                    :class="{ active: i === activeIndex }"
-                    @mousedown.prevent="handleMentionClick(agent.name)"
-                    @mouseenter="handleMentionHover(i)"
-                >
-                    <span class="mention-name">@{{ agent.name }}</span>
-                    <span class="mention-profile">{{ agent.profile }}</span>
-                </div>
-            </div>
-        </Transition>
+        <NDropdown
+            placement="top-start"
+            trigger="manual"
+            :x="dropdownX"
+            :y="dropdownY"
+            :options="dropdownOptions"
+            :show="mentionActive"
+            :render-icon="() => null"
+            @select="handleDropdownSelect"
+            @clickoutside="handleDropdownClickOutside"
+        />
     </div>
 </template>
 
@@ -364,67 +314,5 @@ function handleCompositionEnd() {
     gap: 6px;
     flex-shrink: 0;
     align-items: center;
-}
-
-/* ── Custom mention dropdown (replaces NDropdown) ── */
-
-.mention-dropdown {
-    position: fixed;
-    background: $bg-card;
-    border: 1px solid $border-color;
-    border-radius: 8px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
-    min-width: 200px;
-    max-height: 240px;
-    overflow-y: auto;
-    z-index: 9999;
-    padding: 4px;
-}
-
-.mention-dropdown-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background 0.1s;
-
-    &:hover,
-    &.active {
-        background: rgba(var(--text-primary-rgb), 0.08);
-    }
-
-    .mention-name {
-        color: $text-primary;
-        font-size: 14px;
-        font-weight: 500;
-    }
-
-    .mention-profile {
-        color: $text-muted;
-        font-size: 12px;
-    }
-}
-
-/* ── Dropdown fade/scale animation (matching NDropdown) ── */
-
-.dropdown-fade-enter-active {
-    transition: opacity 0.2s cubic-bezier(0, 0, .2, 1), transform 0.2s cubic-bezier(0, 0, .2, 1);
-    transform-origin: top;
-}
-.dropdown-fade-leave-active {
-    transition: opacity 0.2s cubic-bezier(.4, 0, 1, 1), transform 0.2s cubic-bezier(.4, 0, 1, 1);
-    transform-origin: top;
-}
-.dropdown-fade-enter-from,
-.dropdown-fade-leave-to {
-    opacity: 0;
-    transform: scale(0.9);
-}
-.placement-top.dropdown-fade-enter-active,
-.placement-top.dropdown-fade-leave-active {
-    transform-origin: bottom;
 }
 </style>
