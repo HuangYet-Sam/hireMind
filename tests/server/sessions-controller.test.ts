@@ -189,6 +189,123 @@ describe('session conversations controller', () => {
       { model: 'hermes-model', input_tokens: 20, output_tokens: 10, cache_read_tokens: 4, cache_write_tokens: 2, reasoning_tokens: 6, sessions: 2 },
       { model: 'local-model', input_tokens: 10, output_tokens: 5, cache_read_tokens: 2, cache_write_tokens: 1, reasoning_tokens: 3, sessions: 1 },
     ])
-    expect(ctx.body.daily_usage.find((row: any) => row.date === today)).toMatchObject({ tokens: 45, cache: 6, sessions: 3, cost: 0.02 })
+    expect(ctx.body.daily_usage.find((row: any) => row.date === today)).toMatchObject({
+      input_tokens: 30,
+      output_tokens: 15,
+      cache_read_tokens: 6,
+      cache_write_tokens: 3,
+      sessions: 3,
+      cost: 0.02,
+    })
+  })
+
+  it('keeps blank model usage under an unknown bucket', async () => {
+    getLocalUsageStatsMock.mockReturnValue({
+      input_tokens: 3,
+      output_tokens: 1,
+      cache_read_tokens: 2,
+      cache_write_tokens: 0,
+      reasoning_tokens: 0,
+      sessions: 1,
+      by_model: [
+        { model: '', input_tokens: 3, output_tokens: 1, cache_read_tokens: 2, cache_write_tokens: 0, reasoning_tokens: 0, sessions: 1 },
+      ],
+      by_day: [],
+    })
+    getUsageStatsFromDbMock.mockResolvedValue({
+      input_tokens: 2,
+      output_tokens: 1,
+      cache_read_tokens: 1,
+      cache_write_tokens: 1,
+      reasoning_tokens: 0,
+      sessions: 1,
+      cost: 0,
+      total_api_calls: 0,
+      by_model: [
+        { model: ' ', input_tokens: 2, output_tokens: 1, cache_read_tokens: 1, cache_write_tokens: 1, reasoning_tokens: 0, sessions: 1 },
+      ],
+      by_day: [],
+    })
+
+    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const ctx: any = { query: { days: '2' }, body: null }
+    await mod.usageStats(ctx)
+
+    expect(ctx.body.model_usage).toEqual([
+      { model: 'unknown', input_tokens: 5, output_tokens: 2, cache_read_tokens: 3, cache_write_tokens: 1, reasoning_tokens: 0, sessions: 2 },
+    ])
+  })
+
+  describe('exportSession', () => {
+    it('returns session as JSON download with correct headers (full mode)', async () => {
+      const sessionData = { id: 'abc-123', title: 'Test Session', messages: [{ id: 1, role: 'user', content: 'hello' }] }
+      getSessionDetailFromDbMock.mockResolvedValue(sessionData)
+
+      const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+      const setMock = vi.fn()
+      const ctx: any = { params: { id: 'abc-123' }, query: {}, set: setMock, body: null }
+
+      await mod.exportSession(ctx)
+
+      expect(getSessionDetailFromDbMock).toHaveBeenCalledWith('abc-123')
+      expect(setMock).toHaveBeenCalledWith('Content-Disposition', expect.stringContaining('abc-123'))
+      expect(setMock).toHaveBeenCalledWith('Content-Type', 'application/json')
+      expect(ctx.status).toBeUndefined()
+      expect(JSON.parse(ctx.body)).toMatchObject({ id: 'abc-123', title: 'Test Session' })
+    })
+
+    it('returns full TXT export', async () => {
+      const sessionData = {
+        id: 'txt-123',
+        title: 'Text Export',
+        messages: [
+          { id: 1, role: 'user', content: 'hello', timestamp: 1700000000 },
+          { id: 2, role: 'assistant', content: 'hi', timestamp: 1700000001 },
+        ],
+      }
+      getSessionDetailFromDbMock.mockResolvedValue(sessionData)
+
+      const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+      const setMock = vi.fn()
+      const ctx: any = { params: { id: 'txt-123' }, query: { mode: 'full', ext: 'txt' }, set: setMock, body: null }
+
+      await mod.exportSession(ctx)
+
+      expect(setMock).toHaveBeenCalledWith('Content-Type', 'text/plain; charset=utf-8')
+      expect(ctx.body).toContain('# Text Export')
+      expect(ctx.body).toContain('[user]')
+      expect(ctx.body).toContain('hello')
+      expect(ctx.body).toContain('[assistant]')
+      expect(ctx.body).toContain('hi')
+    })
+
+    it('returns 404 when session not found', async () => {
+      getSessionDetailFromDbMock.mockResolvedValue(null)
+      getSessionMock.mockResolvedValue(null)
+
+      const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+      const ctx: any = { params: { id: 'not-found' }, query: {}, set: vi.fn(), body: null }
+
+      await mod.exportSession(ctx)
+
+      expect(ctx.status).toBe(404)
+      expect(ctx.body).toEqual({ error: 'Session not found' })
+    })
+
+    it('falls back to CLI when DB query fails', async () => {
+      const sessionData = { id: 'cli-123', title: 'CLI Session', messages: [] }
+      getSessionDetailFromDbMock.mockRejectedValue(new Error('db unavailable'))
+      getSessionMock.mockResolvedValue(sessionData)
+
+      const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+      const setMock = vi.fn()
+      const ctx: any = { params: { id: 'cli-123' }, query: {}, set: setMock, body: null }
+
+      await mod.exportSession(ctx)
+
+      expect(getSessionMock).toHaveBeenCalledWith('cli-123')
+      expect(JSON.parse(ctx.body)).toMatchObject({ id: 'cli-123' })
+    })
+>>>>>>> upstream/main
   })
 })
