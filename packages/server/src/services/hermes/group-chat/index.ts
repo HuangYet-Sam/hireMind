@@ -487,11 +487,12 @@ export class GroupChatServer {
         }
     }
 
-    constructor(httpServer: HttpServer) {
+    constructor(httpServers: HttpServer | HttpServer[]) {
         this.storage = new ChatStorage()
         this.storage.init()
+        const servers = Array.isArray(httpServers) ? httpServers : [httpServers]
 
-        this.io = new Server(httpServer, {
+        this.io = new Server(servers[0], {
             cors: { origin: '*' }
         })
         this.nsp = this.io.of('/group-chat')

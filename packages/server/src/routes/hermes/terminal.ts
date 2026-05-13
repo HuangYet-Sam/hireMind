@@ -110,7 +110,7 @@ function createSession(shell: string): PtySession {
 
 // ─── WebSocket server setup ─────────────────────────────────────
 
-export function setupTerminalWebSocket(httpServer: HttpServer) {
+export function setupTerminalWebSocket(httpServers: HttpServer | HttpServer[]) {
   if (!pty) {
     logger.warn('node-pty not available, skipping terminal WebSocket setup')
     return
@@ -118,7 +118,9 @@ export function setupTerminalWebSocket(httpServer: HttpServer) {
 
   const wss = new WebSocketServer({ noServer: true })
   const defaultShell = findShell()
+  const servers = Array.isArray(httpServers) ? httpServers : [httpServers]
 
+  servers.forEach((httpServer) => {
   httpServer.on('upgrade', async (req, socket, head) => {
     const url = new URL(req.url || '', `http://${req.headers.host}`)
     if (url.pathname !== '/api/hermes/terminal') {
@@ -321,6 +323,8 @@ export function setupTerminalWebSocket(httpServer: HttpServer) {
       shell: shellName(defaultShell),
     }))
     logger.info('First session created: %s (%s, pid %d)', firstSession.id, shellName(defaultShell), firstSession.pid)
+  })
+
   })
 
   logger.info('WebSocket ready at /terminal (shell: %s, transport: node-pty)', defaultShell)
