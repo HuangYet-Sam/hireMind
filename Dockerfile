@@ -22,8 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -g 1000 agent \
-    && useradd -u 1000 -g agent -d /home/agent -s /bin/bash agent \
+RUN groupadd -r agent \
+    && useradd -r -g agent -d /home/agent -s /bin/bash agent \
     && mkdir -p /home/agent/.hermes /home/agent/.hermes-web-ui \
     && chown -R agent:agent /home/agent
 
