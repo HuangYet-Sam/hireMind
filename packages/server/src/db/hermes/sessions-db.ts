@@ -53,7 +53,6 @@ export interface HermesMessageRow {
   finish_reason: string | null
   reasoning: string | null
   reasoning_details?: string | null
-  codex_reasoning_items?: string | null
   reasoning_content?: string | null
 }
 
@@ -350,7 +349,6 @@ function mapMessageRow(row: Record<string, unknown>): HermesMessageRow {
     finish_reason: normalizeNullableString(row.finish_reason),
     reasoning,
     reasoning_details: normalizeNullableString(row.reasoning_details),
-    codex_reasoning_items: normalizeNullableString(row.codex_reasoning_items),
     reasoning_content: normalizeNullableString(row.reasoning_content),
   }
 }
@@ -598,11 +596,7 @@ export async function getSessionMessagesFromDb(sessionId: string): Promise<{
     `).get(sessionId) as Record<string, unknown> | undefined
 
     const messageRows = db.prepare(`
-      SELECT
-        id, session_id, role, content, tool_call_id, tool_calls, tool_name,
-        timestamp, token_count, finish_reason, reasoning, reasoning_details,
-        codex_reasoning_items, reasoning_content
-      FROM messages
+      SELECT * FROM messages
       WHERE session_id = ?
       ORDER BY timestamp, id
     `).all(sessionId) as Record<string, unknown>[]
@@ -629,22 +623,7 @@ export async function getSessionDetailFromDb(sessionId: string): Promise<HermesS
     const ids = chain.map(session => session.id)
     const placeholders = ids.map(() => '?').join(', ')
     const messageRows = db.prepare(`
-      SELECT
-        id,
-        session_id,
-        role,
-        content,
-        tool_call_id,
-        tool_calls,
-        tool_name,
-        timestamp,
-        token_count,
-        finish_reason,
-        reasoning,
-        reasoning_details,
-        codex_reasoning_items,
-        reasoning_content
-      FROM messages
+      SELECT * FROM messages
       WHERE session_id IN (${placeholders})
       ORDER BY timestamp, id
     `).all(...ids) as Record<string, unknown>[]
@@ -670,22 +649,7 @@ export async function getSessionDetailFromDbWithProfile(sessionId: string, profi
     const ids = chain.map(session => session.id)
     const placeholders = ids.map(() => '?').join(', ')
     const messageRows = db.prepare(`
-      SELECT
-        id,
-        session_id,
-        role,
-        content,
-        tool_call_id,
-        tool_calls,
-        tool_name,
-        timestamp,
-        token_count,
-        finish_reason,
-        reasoning,
-        reasoning_details,
-        codex_reasoning_items,
-        reasoning_content
-      FROM messages
+      SELECT * FROM messages
       WHERE session_id IN (${placeholders})
       ORDER BY timestamp, id
     `).all(...ids) as Record<string, unknown>[]
@@ -809,107 +773,6 @@ export async function findLatestExactSessionIdWithProfile(
     `
     const titleMatch = db.prepare(titleSql).get(...sourceParams, likePattern) as Record<string, unknown> | undefined
     return titleMatch?.id ? String(titleMatch.id) : null
-  } finally {
-    db.close()
-  }
-}
-
-export async function searchSessionSummariesWithProfile(
-  query: string,
-  profile: string,
-  source?: string,
-  limit = 20,
-): Promise<HermesSessionSearchRow[]> {
-  if (!SQLITE_AVAILABLE) {
-    throw new Error(`node:sqlite requires Node >= 22.5, current: ${process.versions.node}`)
-  }
-
-  const trimmed = query.trim()
-  if (!trimmed) return []
-
-  const { DatabaseSync } = await import('node:sqlite')
-  const dbPath = `${getProfileDir(profile)}/state.db`
-  const db = new DatabaseSync(dbPath, { open: true, readOnly: true })
-  const normalized = sanitizeFtsQuery(trimmed)
-  const prefixQuery = toPrefixQuery(normalized)
-  const titlePattern = buildLikePattern(normalizeTitleLikeQuery(trimmed).toLowerCase())
-  const useLiteralContentSearch = containsCjk(trimmed) || shouldUseLiteralContentSearch(trimmed)
-  const candidateLimit = searchCandidateLimit(limit)
-
-  try {
-    const sourceClause = source ? 'AND s.source = ?' : ''
-    const sourceParams = source ? [source] : []
-    const titleSql = `
-      WITH base AS (
-        SELECT
-          ${SESSION_SELECT},
-          s.parent_session_id AS parent_session_id
-        FROM sessions s
-        WHERE s.source != 'tool' AND s.id NOT LIKE 'compress_%'
-          ${sourceClause}
-      )
-      SELECT
-        base.*,
-        NULL AS matched_message_id,
-        CASE
-          WHEN base.title IS NOT NULL AND base.title != '' THEN base.title
-          ELSE base.preview
-        END AS snippet,
-        0 AS rank
-      FROM base
-      WHERE LOWER(COALESCE(base.title, '')) LIKE ? ESCAPE '\\'
-      ORDER BY base.last_active DESC
-      LIMIT ?
-    `
-    const titleRows = db.prepare(titleSql).all(...sourceParams, titlePattern, candidateLimit) as Record<string, unknown>[]
-
-    const contentSql = `
-      WITH base AS (
-        SELECT
-          ${SESSION_SELECT},
-          s.parent_session_id AS parent_session_id
-        FROM sessions s
-        WHERE s.source != 'tool' AND s.id NOT LIKE 'compress_%'
-          ${sourceClause}
-      )
-      SELECT
-        base.*,
-        m.id AS matched_message_id,
-        snippet(messages_fts, 0, '>>>', '<<<', '...', 40) AS snippet,
-        bm25(messages_fts) AS rank
-      FROM messages_fts
-      JOIN messages m ON m.id = messages_fts.rowid
-      JOIN base ON base.id = m.session_id
-      WHERE messages_fts MATCH ?
-      ORDER BY rank, base.last_active DESC
-      LIMIT ?
-    `
-
-    const contentRows = useLiteralContentSearch
-      ? runLiteralContentSearch(db, source, trimmed, candidateLimit)
-      : prefixQuery
-        ? (db.prepare(contentSql).all(...sourceParams, prefixQuery, candidateLimit) as Record<string, unknown>[])
-        : []
-
-    const idx = loadAllSessions(db)
-    const merged = new Map<string, HermesSessionSearchRow>()
-    for (const row of titleRows) {
-      const mapped = projectSearchRow(row, idx, source)
-      if (mapped) merged.set(mapped.id, mapped)
-    }
-    for (const row of contentRows) {
-      const mapped = projectSearchRow(row, idx, source)
-      if (mapped && !merged.has(mapped.id)) merged.set(mapped.id, mapped)
-    }
-
-    const items = [...merged.values()]
-    items.sort((a, b) => {
-      if (a.rank !== b.rank) return a.rank - b.rank
-      return b.last_active - a.last_active
-    })
-    return items.slice(0, limit)
-  } catch (_err) {
-    return []
   } finally {
     db.close()
   }
@@ -1073,6 +936,107 @@ export async function listSessionSummaries(source?: string, limit = 2000, profil
       .map(root => projectSessionSummary(root, collectSessionChain(root, idx)))
       .sort((a, b) => Number(b.last_active || b.started_at || 0) - Number(a.last_active || a.started_at || 0))
       .slice(0, limit)
+  } finally {
+    db.close()
+  }
+}
+
+export async function searchSessionSummariesWithProfile(
+  query: string,
+  profile: string,
+  source?: string,
+  limit = 20,
+): Promise<HermesSessionSearchRow[]> {
+  if (!SQLITE_AVAILABLE) {
+    throw new Error(`node:sqlite requires Node >= 22.5, current: ${process.versions.node}`)
+  }
+
+  const trimmed = query.trim()
+  if (!trimmed) return []
+
+  const { DatabaseSync } = await import('node:sqlite')
+  const dbPath = `${getProfileDir(profile)}/state.db`
+  const db = new DatabaseSync(dbPath, { open: true, readOnly: true })
+  const normalized = sanitizeFtsQuery(trimmed)
+  const prefixQuery = toPrefixQuery(normalized)
+  const titlePattern = buildLikePattern(normalizeTitleLikeQuery(trimmed).toLowerCase())
+  const useLiteralContentSearch = containsCjk(trimmed) || shouldUseLiteralContentSearch(trimmed)
+  const candidateLimit = searchCandidateLimit(limit)
+
+  try {
+    const sourceClause = source ? 'AND s.source = ?' : ''
+    const sourceParams = source ? [source] : []
+    const titleSql = `
+      WITH base AS (
+        SELECT
+          ${SESSION_SELECT},
+          s.parent_session_id AS parent_session_id
+        FROM sessions s
+        WHERE s.source != 'tool' AND s.id NOT LIKE 'compress_%'
+          ${sourceClause}
+      )
+      SELECT
+        base.*,
+        NULL AS matched_message_id,
+        CASE
+          WHEN base.title IS NOT NULL AND base.title != '' THEN base.title
+          ELSE base.preview
+        END AS snippet,
+        0 AS rank
+      FROM base
+      WHERE LOWER(COALESCE(base.title, '')) LIKE ? ESCAPE '\\'
+      ORDER BY base.last_active DESC
+      LIMIT ?
+    `
+    const titleRows = db.prepare(titleSql).all(...sourceParams, titlePattern, candidateLimit) as Record<string, unknown>[]
+
+    const contentSql = `
+      WITH base AS (
+        SELECT
+          ${SESSION_SELECT},
+          s.parent_session_id AS parent_session_id
+        FROM sessions s
+        WHERE s.source != 'tool' AND s.id NOT LIKE 'compress_%'
+          ${sourceClause}
+      )
+      SELECT
+        base.*,
+        m.id AS matched_message_id,
+        snippet(messages_fts, 0, '>>>', '<<<', '...', 40) AS snippet,
+        bm25(messages_fts) AS rank
+      FROM messages_fts
+      JOIN messages m ON m.id = messages_fts.rowid
+      JOIN base ON base.id = m.session_id
+      WHERE messages_fts MATCH ?
+      ORDER BY rank, base.last_active DESC
+      LIMIT ?
+    `
+
+    const contentRows = useLiteralContentSearch
+      ? runLiteralContentSearch(db, source, trimmed, candidateLimit)
+      : prefixQuery
+        ? (db.prepare(contentSql).all(...sourceParams, prefixQuery, candidateLimit) as Record<string, unknown>[])
+        : []
+
+    const idx = loadAllSessions(db)
+    const merged = new Map<string, HermesSessionSearchRow>()
+    for (const row of titleRows) {
+      const mapped = projectSearchRow(row, idx, source)
+      if (mapped) merged.set(mapped.id, mapped)
+    }
+    for (const row of contentRows) {
+      const mapped = projectSearchRow(row, idx, source)
+      if (mapped && !merged.has(mapped.id)) merged.set(mapped.id, mapped)
+    }
+
+    const items = [...merged.values()]
+    items.sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank
+      return b.last_active - a.last_active
+    })
+    return items.slice(0, limit)
+  } catch (_err) {
+    return []
   } finally {
     db.close()
   }

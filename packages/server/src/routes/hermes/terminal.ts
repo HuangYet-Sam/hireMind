@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws'
 import type { Server as HttpServer } from 'http'
 import { accessSync, chmodSync, constants as fsConstants, existsSync } from 'fs'
 import { dirname, join } from 'path'
+import { homedir } from 'os'
 import { getToken } from '../../services/auth'
 import { logger } from '../../services/logger'
 
@@ -43,12 +44,16 @@ try {
 // ─── Shell detection ────────────────────────────────────────────
 
 function findShell(): string {
+  // Windows 平台：使用 PowerShell
+  if (process.platform === 'win32') {
+    return 'powershell.exe'
+  }
+
+  // Unix 平台：使用 SHELL 环境变量，或回退到常用 shells
   const candidates = [
     process.env.SHELL,
     '/bin/zsh',
     '/bin/bash',
-    process.platform === 'win32' ? 'powershell.exe' : null,
-    process.platform === 'win32' ? 'cmd.exe' : null,
   ].filter(Boolean) as string[]
 
   for (const shell of candidates) {
@@ -91,7 +96,7 @@ function createSession(shell: string): PtySession {
       name: 'xterm-color',
       cols: 80,
       rows: 24,
-      cwd: process.env.HOME || undefined,
+      cwd: homedir(),
     })
   } catch (err: any) {
     throw new Error(`Failed to spawn shell "${shell}": ${err.message}`)
@@ -121,25 +126,26 @@ export function setupTerminalWebSocket(httpServers: HttpServer | HttpServer[]) {
   const servers = Array.isArray(httpServers) ? httpServers : [httpServers]
 
   servers.forEach((httpServer) => {
-  httpServer.on('upgrade', async (req, socket, head) => {
-    const url = new URL(req.url || '', `http://${req.headers.host}`)
-    if (url.pathname !== '/api/hermes/terminal') {
-      return
-    }
-
-    // Auth check
-    const authToken = await getToken()
-    if (authToken) {
-      const token = url.searchParams.get('token') || ''
-      if (token !== authToken) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
-        socket.destroy()
+    httpServer.on('upgrade', async (req, socket, head) => {
+      const url = new URL(req.url || '', `http://${req.headers.host}`)
+      if (url.pathname !== '/api/hermes/terminal') {
         return
       }
-    }
 
-    wss.handleUpgrade(req, socket, head, (ws) => {
-      wss.emit('connection', ws, req)
+      // Auth check
+      const authToken = await getToken()
+      if (authToken) {
+        const token = url.searchParams.get('token') || ''
+        if (token !== authToken) {
+          socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+          socket.destroy()
+          return
+        }
+      }
+
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req)
+      })
     })
   })
 
@@ -323,8 +329,6 @@ export function setupTerminalWebSocket(httpServers: HttpServer | HttpServer[]) {
       shell: shellName(defaultShell),
     }))
     logger.info('First session created: %s (%s, pid %d)', firstSession.id, shellName(defaultShell), firstSession.pid)
-  })
-
   })
 
   logger.info('WebSocket ready at /terminal (shell: %s, transport: node-pty)', defaultShell)

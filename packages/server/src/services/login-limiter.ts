@@ -175,6 +175,7 @@ export function checkPassword(ip: string): CheckResult {
   const global = checkGlobalLimits()
   if (global) return global
 
+  // Check both maps — IP locked by either password or token = blocked
   const ipLock = checkIpLock(ip, state.passwordIpMap) || checkIpLock(ip, state.tokenIpMap)
   if (ipLock) return ipLock
 
@@ -188,6 +189,7 @@ export function checkToken(ip: string): CheckResult {
   const global = checkGlobalLimits()
   if (global) return global
 
+  // Check both maps — IP locked by either password or token = blocked
   const ipLock = checkIpLock(ip, state.tokenIpMap) || checkIpLock(ip, state.passwordIpMap)
   if (ipLock) return ipLock
 

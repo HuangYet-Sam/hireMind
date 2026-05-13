@@ -5,11 +5,3 @@ dist
 hermes_data
 *.log
 .DS_Store
-.omc
-.claude
-tests
-.playwright-mcp
-agents-page-screenshot.png
-agents-page-with-jobs.png
-jobs-snapshot.txt
-test_*.js

@@ -11,6 +11,7 @@ const getGroupChatServerMock = vi.fn()
 const getLocalUsageStatsMock = vi.fn()
 const getActiveProfileNameMock = vi.fn()
 const loggerWarnMock = vi.fn()
+const getCompressionSnapshotMock = vi.fn()
 
 vi.mock('../../packages/server/src/db/hermes/conversations-db', () => ({
   listConversationSummariesFromDb: listConversationSummariesFromDbMock,
@@ -67,6 +68,25 @@ vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
   getActiveProfileName: getActiveProfileNameMock,
 }))
 
+vi.mock('../../packages/server/src/db/hermes/compression-snapshot', () => ({
+  getCompressionSnapshot: getCompressionSnapshotMock,
+}))
+
+vi.mock('../../packages/server/src/lib/context-compressor/export-compressor', () => ({
+  ExportCompressor: class {
+    async compress(messages: any[]) {
+      return {
+        messages,
+        meta: { totalMessages: messages.length, compressed: true, llmCompressed: true, summaryTokenEstimate: 100, verbatimCount: 0, compressedStartIndex: -1 },
+      }
+    }
+  },
+}))
+
+vi.mock('../../packages/server/src/services/gateway-bootstrap', () => ({
+  getGatewayManagerInstance: () => null,
+}))
+
 describe('session conversations controller', () => {
   beforeEach(() => {
     vi.resetModules()
@@ -83,6 +103,7 @@ describe('session conversations controller', () => {
     getActiveProfileNameMock.mockReset()
     getActiveProfileNameMock.mockReturnValue('default')
     loggerWarnMock.mockReset()
+    getCompressionSnapshotMock.mockReset()
   })
 
   it('prefers the DB-backed conversations summary path', async () => {
@@ -148,7 +169,7 @@ describe('session conversations controller', () => {
         { model: 'local-model', input_tokens: 10, output_tokens: 5, cache_read_tokens: 2, cache_write_tokens: 1, reasoning_tokens: 3, sessions: 1 },
       ],
       by_day: [
-        { date: today, tokens: 15, cache: 2, sessions: 1, cost: 0 },
+        { date: today, input_tokens: 10, output_tokens: 5, cache_read_tokens: 2, cache_write_tokens: 1, sessions: 1, errors: 0, cost: 0 },
       ],
     })
     getUsageStatsFromDbMock.mockResolvedValue({
@@ -164,7 +185,7 @@ describe('session conversations controller', () => {
         { model: 'hermes-model', input_tokens: 20, output_tokens: 10, cache_read_tokens: 4, cache_write_tokens: 2, reasoning_tokens: 6, sessions: 2 },
       ],
       by_day: [
-        { date: today, tokens: 30, cache: 4, sessions: 2, cost: 0.02 },
+        { date: today, input_tokens: 20, output_tokens: 10, cache_read_tokens: 4, cache_write_tokens: 2, sessions: 2, errors: 0, cost: 0.02 },
       ],
     })
 
@@ -306,6 +327,5 @@ describe('session conversations controller', () => {
       expect(getSessionMock).toHaveBeenCalledWith('cli-123')
       expect(JSON.parse(ctx.body)).toMatchObject({ id: 'cli-123' })
     })
->>>>>>> upstream/main
   })
 })
