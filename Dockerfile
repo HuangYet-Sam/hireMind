@@ -16,24 +16,23 @@ COPY . .
 RUN npm run build && npm prune --omit=dev
 
 # ── Stage 2: Runtime ───────────────────────────────────────────
-FROM node:23-slim
+FROM python:3.13-slim-trixie
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=node:23-slim /usr/local/bin/node /usr/local/bin/node
+RUN ln -sf /usr/local/bin/python3 /usr/bin/python3
 
-RUN groupadd -r agent \
-    && useradd -r -g agent -d /home/agent -s /bin/bash agent \
-    && mkdir -p /home/agent/.hermes /home/agent/.hermes-web-ui \
-    && chown -R agent:agent /home/agent
+RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null; \
+    sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list 2>/dev/null; \
+    apt-get update && apt-get install -y --no-install-recommends \
+    git curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /home/agent/.hermes /home/agent/.hermes-web-ui
 
 WORKDIR /app
 
-COPY --from=builder --chown=agent:agent /app/dist ./dist
-COPY --from=builder --chown=agent:agent /app/node_modules ./node_modules
-COPY --from=builder --chown=agent:agent /app/package.json ./
-
-USER agent
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
 
 ENV NODE_ENV=production
 ENV HOME=/home/agent
