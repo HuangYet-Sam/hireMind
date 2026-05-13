@@ -1,41 +1,49 @@
-ARG BASE_IMAGE=nousresearch/hermes-agent:latest
-FROM ${BASE_IMAGE}
-
-USER root
+# ── Stage 1: Build ──────────────────────────────────────────────
+FROM node:23-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    make \
-    g++ \
+    make g++ python3 \
     && rm -rf /var/lib/apt/lists/*
-
-RUN ARCH=$(dpkg --print-architecture) \
-    && if [ "$ARCH" = "amd64" ]; then NODE_ARCH="x64"; else NODE_ARCH="$ARCH"; fi \
-    && echo "Downloading Node.js v23.11.0 for ${NODE_ARCH}" \
-    && curl -fsSL "https://nodejs.org/dist/v23.11.0/node-v23.11.0-linux-${NODE_ARCH}.tar.gz" \
-       -o /tmp/node.tar.gz \
-    && tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 \
-    && rm -f /tmp/node.tar.gz \
-    && node --version
 
 WORKDIR /app
 
 COPY package*.json ./
-# Increase Node.js memory limit to prevent OOM during build
+
 ENV NODE_OPTIONS=--max-old-space-size=4096
-RUN npm install --ignore-scripts && npm rebuild node-pty
+RUN npm ci --ignore-scripts && npm rebuild node-pty
 
 COPY . .
-
 RUN npm run build && npm prune --omit=dev
+
+# ── Stage 2: Runtime ───────────────────────────────────────────
+FROM node:23-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 1000 agent \
+    && useradd -u 1000 -g agent -d /home/agent -s /bin/bash agent \
+    && mkdir -p /home/agent/.hermes /home/agent/.hermes-web-ui \
+    && chown -R agent:agent /home/agent
+
+WORKDIR /app
+
+COPY --from=builder --chown=agent:agent /app/dist ./dist
+COPY --from=builder --chown=agent:agent /app/node_modules ./node_modules
+COPY --from=builder --chown=agent:agent /app/package.json ./
+
+USER agent
 
 ENV NODE_ENV=production
 ENV HOME=/home/agent
 ENV HERMES_HOME=/home/agent/.hermes
+ENV PORT=6060
 
 EXPOSE 6060
 
-# 强制覆盖基础镜像的默认启动脚本，让镜像本身具备独立运行的能力
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD node -e "fetch('http://localhost:'+(process.env.PORT||6060)+'/health').then(r=>r.ok?process.exit(0):process.exit(1)).catch(()=>process.exit(1))"
+
 ENTRYPOINT ["node", "dist/server/index.js"]
 CMD []
