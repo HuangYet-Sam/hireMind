@@ -14,9 +14,8 @@ import { createSession, addMessage, updateSession } from '../../db/hermes/sessio
 import { getDb } from '../../db/index'
 import { logger } from '../logger'
 import { listSessionSummaries as listHermesSessionSummaries } from '../../db/hermes/sessions-db'
-import { detectHermesHome } from './hermes-path'
 
-const HERMES_BASE = detectHermesHome()
+const HERMES_BASE = resolve(homedir(), '.hermes')
 const PROFILES_DIR = join(HERMES_BASE, 'profiles')
 
 /**
@@ -69,8 +68,6 @@ async function syncProfileSessions(profile: string): Promise<{
     logger.info(`[session-sync] profile '${profile}': found ${summaries.length} aggregated session chains`)
 
     for (const hermesSession of summaries) {
-      // Skip ephemeral sessions (created internally by chat-run-socket)
-      if (hermesSession.id.startsWith('eph_')) continue
       try {
         // Generate new session ID for local DB
         const newSessionId = generateUuid()
@@ -108,6 +105,7 @@ async function syncProfileSessions(profile: string): Promise<{
             reasoning: msg.reasoning,
             reasoning_details: msg.reasoning_details,
             reasoning_content: msg.reasoning_content,
+            codex_reasoning_items: msg.codex_reasoning_items,
           })
         }
 

@@ -2,7 +2,6 @@ import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { randomBytes } from 'crypto'
 import { homedir } from 'os'
-import { checkToken, recordTokenFailure, extractIp } from './login-limiter'
 
 const APP_HOME = join(homedir(), '.hermes-web-ui')
 const TOKEN_FILE = join(APP_HOME, '.token')
@@ -29,12 +28,7 @@ export async function getToken(): Promise<string | null> {
   } catch {
     const token = generateToken()
     await mkdir(APP_HOME, { recursive: true })
-    // Only set mode on Unix systems (Windows ignores this)
-    const options: any = {}
-    if (process.platform !== 'win32') {
-      options.mode = 0o600
-    }
-    await writeFile(TOKEN_FILE, token + '\n', options)
+    await writeFile(TOKEN_FILE, token + '\n', { mode: 0o600 })
     return token
   }
 }
@@ -62,18 +56,6 @@ export function requireAuth(token: string | null) {
         await next()
         return
       }
-
-      // Check rate limiter for token auth failures (separate IP counters from password login)
-      const ip = extractIp(ctx)
-      const result = checkToken(ip)
-      if (!result.allowed) {
-        ctx.status = result.status
-        ctx.set('Content-Type', 'application/json')
-        ctx.body = { error: 'Too many login attempts, please try again later' }
-        return
-      }
-
-      recordTokenFailure(ip)
       ctx.status = 401
       ctx.set('Content-Type', 'application/json')
       ctx.body = { error: 'Unauthorized' }

@@ -1,89 +1,57 @@
-import { ref, watch, computed } from 'vue'
+import { ref, watch } from 'vue'
 
-export type BrightnessMode = 'light' | 'dark' | 'system'
-export type ThemeStyle = 'ink' | 'comic'
+export type ThemeMode = 'light' | 'dark' | 'system'
 
-const BRIGHTNESS_KEY = 'hermes_brightness'
-const STYLE_KEY = 'hermes_style'
+const STORAGE_KEY = 'hermes_theme'
 
-const brightness = ref<BrightnessMode>(
-  (localStorage.getItem(BRIGHTNESS_KEY) as BrightnessMode) || 'system',
-)
-
-const style = ref<ThemeStyle>(
-  (localStorage.getItem(STYLE_KEY) as ThemeStyle) || 'ink',
+const mode = ref<ThemeMode>(
+  (localStorage.getItem(STORAGE_KEY) as ThemeMode) || 'system',
 )
 
 const isDark = ref(false)
-const isComic = ref(false)
 
-function resolveDark(b: BrightnessMode): boolean {
-  if (b === 'system') {
+function applyTheme(dark: boolean) {
+  isDark.value = dark
+  document.documentElement.classList.toggle('dark', dark)
+}
+
+function resolveDark(m: ThemeMode): boolean {
+  if (m === 'system') {
     return window.matchMedia('(prefers-color-scheme: dark)').matches
   }
-  return b === 'dark'
+  return m === 'dark'
 }
 
-function applyClasses() {
-  const dark = resolveDark(brightness.value)
-  isDark.value = dark
-  isComic.value = style.value === 'comic'
-  document.documentElement.classList.toggle('dark', dark)
-  document.documentElement.classList.toggle('comic', isComic.value)
-}
-
-// Initial
-applyClasses()
+// Initial resolve
+applyTheme(resolveDark(mode.value))
 
 // Listen for system preference changes
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  if (brightness.value === 'system') {
-    applyClasses()
+const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+mediaQuery.addEventListener('change', () => {
+  if (mode.value === 'system') {
+    applyTheme(resolveDark('system'))
   }
 })
 
-// Persist & apply on change
-watch(brightness, (b) => {
-  localStorage.setItem(BRIGHTNESS_KEY, b)
-  applyClasses()
-})
-
-watch(style, (s) => {
-  localStorage.setItem(STYLE_KEY, s)
-  applyClasses()
+// Watch mode changes
+watch(mode, (newMode) => {
+  localStorage.setItem(STORAGE_KEY, newMode)
+  applyTheme(resolveDark(newMode))
 })
 
 export function useTheme() {
-  const themeName = computed(() => {
-    const b = isDark.value ? 'dark' : 'light'
-    return isComic.value ? `comic-${b}` : b
-  })
-
-  function setBrightness(b: BrightnessMode) {
-    brightness.value = b
+  function setMode(m: ThemeMode) {
+    mode.value = m
   }
 
-  function setStyle(s: ThemeStyle) {
-    style.value = s
-  }
-
-  function toggleBrightness() {
-    brightness.value = isDark.value ? 'light' : 'dark'
-  }
-
-  function toggleStyle() {
-    style.value = isComic.value ? 'ink' : 'comic'
+  function toggleTheme() {
+    mode.value = isDark.value ? 'light' : 'dark'
   }
 
   return {
-    brightness,
-    style,
+    mode,
     isDark,
-    isComic,
-    themeName,
-    setBrightness,
-    setStyle,
-    toggleBrightness,
-    toggleStyle,
+    setMode,
+    toggleTheme,
   }
 }

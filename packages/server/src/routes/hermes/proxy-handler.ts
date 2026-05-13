@@ -1,4 +1,5 @@
 import type { Context } from 'koa'
+import { config } from '../../config'
 import { getGatewayManagerInstance } from '../../services/gateway-bootstrap'
 import { updateUsage } from '../../db/hermes/usage-store'
 
@@ -67,14 +68,14 @@ function resolveProfile(ctx: Context): string {
 /** Resolve upstream URL for a request based on profile header/query */
 function resolveUpstream(ctx: Context): string {
   const mgr = getGatewayManager()
-  if (!mgr) {
-    throw new Error('GatewayManager not initialized')
+  if (mgr) {
+    const profile = resolveProfile(ctx)
+    if (profile && profile !== 'default') {
+      return mgr.getUpstream(profile)
+    }
+    return mgr.getUpstream()
   }
-  const profile = resolveProfile(ctx)
-  if (profile && profile !== 'default') {
-    return mgr.getUpstream(profile)
-  }
-  return mgr.getUpstream()
+  return config.upstream.replace(/\/$/, '')
 }
 
 function buildProxyHeaders(ctx: Context, upstream: string): Record<string, string> {
@@ -184,14 +185,7 @@ async function streamSSE(ctx: Context, res: Response, profile: string): Promise<
 
 export async function proxy(ctx: Context) {
   const profile = resolveProfile(ctx)
-  let upstream: string
-  try {
-    upstream = resolveUpstream(ctx)
-  } catch (e: any) {
-    ctx.status = 503
-    ctx.body = { error: { message: e?.message || 'GatewayManager not initialized' } }
-    return
-  }
+  const upstream = resolveUpstream(ctx)
   const upstreamPath = ctx.path.replace(/^\/api\/hermes\/v1/, '/v1').replace(/^\/api\/hermes/, '/api')
   const params = new URLSearchParams(ctx.search || '')
   params.delete('token')

@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('../../packages/server/src/config', () => ({
+  config: { upstream: 'http://127.0.0.1:8642' },
+}))
+
 vi.mock('../../packages/server/src/services/gateway-bootstrap', () => ({
-  getGatewayManagerInstance: () => ({
-    getUpstream: () => 'http://127.0.0.1:8642',
-    getApiKey: () => null,
-  }),
+  getGatewayManagerInstance: () => null,
 }))
 
 const mockFetch = vi.fn()
