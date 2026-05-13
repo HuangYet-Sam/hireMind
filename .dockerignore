@@ -8,15 +8,8 @@ hermes_data
 .omc
 .claude
 tests
-*.md
-!package.json
-vite.config.ts
-vitest.config.ts
-tsconfig.json
-scripts
-bin
+.playwright-mcp
 agents-page-screenshot.png
 agents-page-with-jobs.png
 jobs-snapshot.txt
 test_*.js
-.playwright-mcp
