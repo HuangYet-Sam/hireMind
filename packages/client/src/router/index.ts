@@ -10,6 +10,8 @@ const router = createRouter({
       component: () => import('@/views/LoginView.vue'),
       meta: { public: true },
     },
+
+    // ─── Hermes Admin Routes (unchanged) ──────────────────
     {
       path: '/hermes/chat',
       name: 'hermes.chat',
@@ -24,11 +26,6 @@ const router = createRouter({
       path: '/hermes/jobs',
       name: 'hermes.jobs',
       component: () => import('@/views/hermes/JobsView.vue'),
-    },
-    {
-      path: '/hermes/kanban',
-      name: 'hermes.kanban',
-      component: () => import('@/views/hermes/KanbanView.vue'),
     },
     {
       path: '/hermes/models',
@@ -54,11 +51,6 @@ const router = createRouter({
       path: '/hermes/skills',
       name: 'hermes.skills',
       component: () => import('@/views/hermes/SkillsView.vue'),
-    },
-    {
-      path: '/hermes/plugins',
-      name: 'hermes.plugins',
-      component: () => import('@/views/hermes/PluginsView.vue'),
     },
     {
       path: '/hermes/memory',
@@ -94,6 +86,89 @@ const router = createRouter({
       path: '/hermes/files',
       name: 'hermes.files',
       component: () => import('@/views/hermes/FilesView.vue'),
+    },
+
+    // ─── HireMind Recruitment Routes ─────────────────────
+    {
+      path: '/hr',
+      component: () => import('@/components/layout/HrLayout.vue'),
+      meta: { hr: true },
+      children: [
+        {
+          path: '',
+          redirect: { name: 'hr.dashboard' },
+        },
+        {
+          path: 'dashboard',
+          name: 'hr.dashboard',
+          component: () => import('@/views/hr/DashboardView.vue'),
+        },
+        {
+          path: 'org-chart',
+          name: 'hr.orgChart',
+          component: () => import('@/views/hr/OrgChartView.vue'),
+        },
+        {
+          path: 'positions',
+          name: 'hr.positions',
+          component: () => import('@/views/hr/PositionsView.vue'),
+        },
+        {
+          path: 'positions/:id',
+          name: 'hr.positionDetail',
+          component: () => import('@/views/hr/PositionsView.vue'),
+        },
+        {
+          path: 'resumes',
+          name: 'hr.resumes',
+          component: () => import('@/views/hr/ResumesView.vue'),
+        },
+        {
+          path: 'candidates',
+          name: 'hr.candidates',
+          component: () => import('@/views/hr/CandidatesView.vue'),
+        },
+        {
+          path: 'candidates/:id',
+          name: 'hr.candidateDetail',
+          component: () => import('@/views/hr/CandidatesView.vue'),
+        },
+        {
+          path: 'matching',
+          name: 'hr.matching',
+          component: () => import('@/views/hr/MatchingView.vue'),
+        },
+        {
+          path: 'interviews',
+          name: 'hr.interviews',
+          component: () => import('@/views/hr/InterviewsView.vue'),
+        },
+        {
+          path: 'interviews/:id',
+          name: 'hr.interviewDetail',
+          component: () => import('@/views/hr/InterviewsView.vue'),
+        },
+        {
+          path: 'offers',
+          name: 'hr.offers',
+          component: () => import('@/views/hr/OffersView.vue'),
+        },
+        {
+          path: 'offers/:id',
+          name: 'hr.offerDetail',
+          component: () => import('@/views/hr/OffersView.vue'),
+        },
+        {
+          path: 'analytics',
+          name: 'hr.analytics',
+          component: () => import('@/views/hr/AnalyticsView.vue'),
+        },
+        {
+          path: 'tasks',
+          name: 'hr.tasks',
+          component: () => import('@/views/hr/TasksView.vue'),
+        },
+      ],
     },
   ],
 })

@@ -1,10 +1,10 @@
 {
-  "name": "hermes-web-ui",
-  "version": "0.5.17",
-  "description": "Self-hosted AI chat dashboard for Hermes Agent — multi-model web UI with multi-platform integration",
+  "name": "hiremind",
+  "version": "0.1.0",
+  "description": "Self-hosted AI chat dashboard for Hermes Agent \u2014 multi-model web UI with multi-platform integration",
   "repository": {
     "type": "git",
-    "url": "https://github.com/EKKOLearnAI/hermes-web-ui.git"
+    "url": "https://github.com/HuangYet-Sam/hireMind"
   },
   "homepage": "https://ekkolearnai.com",
   "license": "BSL-1.1",

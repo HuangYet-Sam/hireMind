@@ -1,0 +1,11 @@
+// HireMind Recruitment API — Unified exports
+export * from './client'
+export * as positionsApi from './positions'
+export * as candidatesApi from './candidates'
+export * as resumesApi from './resumes'
+export * as matchingApi from './matching'
+export * as interviewsApi from './interviews'
+export * as offersApi from './offers'
+export * as analyticsApi from './analytics'
+export * as departmentsApi from './departments'
+export * as tasksApi from './tasks'
