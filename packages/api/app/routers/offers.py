@@ -22,6 +22,35 @@ from app.services.offer_service import OfferService
 router = APIRouter()
 
 
+@router.post("/ai/salary-recommendation", summary="Generate AI salary recommendation")
+async def generate_salary_recommendation(
+    payload: dict,
+    current_user: CurrentUserDep,
+):
+    """
+    Generate AI-powered offer salary recommendation.
+
+    Request body: {
+        "candidate": {"skills": [...], "profile": {...}},
+        "position": {"title": "...", "salary_min": ..., "salary_max": ...},
+        "market_data": {} // optional
+    }
+    """
+    from app.services.ai_client import ai_client
+
+    result = await ai_client.generate_offer_recommendation(
+        candidate_info=payload.get("candidate", {}),
+        position_info=payload.get("position", {}),
+        market_data=payload.get("market_data"),
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service unavailable. Configure Hermes Agent or OpenAI API key.",
+        )
+    return result
+
+
 @router.get("/", response_model=OfferListResponse, summary="List offers")
 async def list_offers(
     db: DbSession,

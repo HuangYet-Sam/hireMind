@@ -1,0 +1,69 @@
+// HR Responsive Mixins
+// Shared responsive utilities for all HR views
+
+@mixin hr-page-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+
+  @media (max-width: $breakpoint-mobile) {
+    padding: 16px;
+  }
+}
+
+@mixin hr-page-header {
+  margin-bottom: 24px;
+
+  @media (max-width: $breakpoint-mobile) {
+    margin-bottom: 16px;
+  }
+
+  .header-title {
+    font-size: 22px;
+    font-weight: 600;
+    color: $text-primary;
+    margin: 0 0 4px;
+
+    @media (max-width: $breakpoint-mobile) {
+      font-size: 18px;
+    }
+  }
+
+  .header-desc {
+    font-size: 14px;
+    color: $text-muted;
+    margin: 0;
+
+    @media (max-width: $breakpoint-mobile) {
+      font-size: 12px;
+    }
+  }
+}
+
+@mixin hr-filter-bar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+
+  @media (max-width: $breakpoint-mobile) {
+    gap: 8px;
+
+    :deep(.n-input) {
+      width: 100% !important;
+    }
+
+    :deep(.n-select) {
+      width: 100% !important;
+    }
+  }
+}
+
+@mixin hr-card-grid {
+  @media (max-width: $breakpoint-mobile) {
+    :deep(.n-grid) {
+      grid-template-columns: 1fr !important;
+    }
+  }
+}

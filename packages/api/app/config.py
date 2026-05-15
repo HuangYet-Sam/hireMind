@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     # ── Hermes Agent Integration ─────────────────────────────
     HERMES_AGENT_URL: str = "http://localhost:8648"
     HERMES_AGENT_API_KEY: str = ""
+    HERMES_AGENT_MODEL: str = "default"
 
     # ── File Upload ───────────────────────────────────────────
     UPLOAD_DIR: str = "uploads"
@@ -68,6 +69,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     OPENAI_API_BASE: str = "https://api.openai.com/v1"
     OPENAI_MODEL_RESUME: str = "gpt-4o-mini"
+    OPENAI_MODEL_MATCHING: str = "gpt-4o-mini"
 
     # ── CORS ─────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = Field(

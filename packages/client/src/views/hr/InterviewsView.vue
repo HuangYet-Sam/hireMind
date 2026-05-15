@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NCard, NButton, NDataTable, NTag, NSpace, NSelect, NSpin } from 'naive-ui'
+import { NButton, NDataTable, NTag, NSpace, NSelect, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useInterviewStore } from '@/stores/hr/interviews'
 import type { Interview } from '@/api/hr/interviews'
 import InterviewCreateModal from '@/components/hr/InterviewCreateModal.vue'
+import ErrorBoundary from '@/components/hr/ErrorBoundary.vue'
+import TableSkeleton from '@/components/hr/TableSkeleton.vue'
 
 const interviewStore = useInterviewStore()
+const message = useMessage()
 const filterStatus = ref<string>('')
 const showCreateModal = ref(false)
 
@@ -68,44 +71,51 @@ function handleView(id: string) {
 }
 
 async function handleCancel(id: string) {
-  await interviewStore.cancelInterview(id)
+  try {
+    await interviewStore.cancelInterview(id)
+    message.success('面试已取消')
+  } catch {
+    message.error('取消失败')
+  }
 }
 
 function handleCreateSaved() {
   interviewStore.fetchInterviews()
   showCreateModal.value = false
+  message.success('面试已安排')
 }
 </script>
 
 <template>
-  <div class="interviews-view">
-    <header class="page-header">
-      <h2 class="header-title">面试管理</h2>
-      <NButton type="primary" @click="showCreateModal = true">安排面试</NButton>
-    </header>
+  <ErrorBoundary>
+    <div class="interviews-view">
+      <header class="page-header">
+        <h2 class="header-title">面试管理</h2>
+        <NButton type="primary" @click="showCreateModal = true">安排面试</NButton>
+      </header>
 
-    <div class="filter-bar">
-      <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleFilter" />
-    </div>
+      <div class="filter-bar">
+        <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleFilter" />
+      </div>
 
-    <NSpin :show="interviewStore.loading">
+      <TableSkeleton v-if="interviewStore.loading" :rows="6" :columns="8" />
       <NDataTable
+        v-else
         :columns="columns"
         :data="interviewStore.interviews"
         :row-key="(row: Interview) => row.id"
         :pagination="{ pageSize: 20 }"
+        :scroll-x="950"
         striped
       />
-    </NSpin>
 
-    <!-- TODO: Calendar view tab -->
-
-    <InterviewCreateModal
-      :show="showCreateModal"
-      @close="showCreateModal = false"
-      @saved="handleCreateSaved"
-    />
-  </div>
+      <InterviewCreateModal
+        :show="showCreateModal"
+        @close="showCreateModal = false"
+        @saved="handleCreateSaved"
+      />
+    </div>
+  </ErrorBoundary>
 </template>
 
 <style scoped lang="scss">
@@ -120,6 +130,12 @@ function handleCreateSaved() {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+
+  @media (max-width: $breakpoint-mobile) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
 
   .header-title {
     font-size: 22px;

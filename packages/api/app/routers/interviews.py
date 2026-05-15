@@ -24,6 +24,42 @@ from app.services.interview_service import InterviewService
 router = APIRouter()
 
 
+@router.post("/ai/questions", summary="Generate AI interview questions")
+async def generate_ai_questions(
+    payload: dict,
+    current_user: CurrentUserDep,
+):
+    """
+    Generate AI-powered interview questions for a position-candidate pair.
+
+    Request body: {
+        "position": {"title": "...", "required_skills": [...], "description": "..."},
+        "candidate": {"skills": [...], "profile": {...}},
+        "interview_type": "technical|behavioral|system|case",
+        "num_questions": 5
+    }
+    """
+    from app.services.ai_client import ai_client
+
+    position_info = payload.get("position", {})
+    candidate_info = payload.get("candidate", {})
+    interview_type = payload.get("interview_type", "technical")
+    num_questions = payload.get("num_questions", 5)
+
+    result = await ai_client.generate_interview_questions(
+        position_info=position_info,
+        candidate_info=candidate_info,
+        interview_type=interview_type,
+        num_questions=num_questions,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI service unavailable. Configure Hermes Agent or OpenAI API key.",
+        )
+    return result
+
+
 @router.get("/", response_model=InterviewListResponse, summary="List interviews")
 async def list_interviews(
     db: DbSession,

@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NCard, NButton, NDataTable, NTag, NSpace, NSelect, NSteps, NStep, NSpin } from 'naive-ui'
+import { NButton, NDataTable, NTag, NSpace, NSelect, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useOfferStore } from '@/stores/hr/offers'
 import type { Offer } from '@/api/hr/offers'
 import OfferCreateModal from '@/components/hr/OfferCreateModal.vue'
+import ErrorBoundary from '@/components/hr/ErrorBoundary.vue'
+import TableSkeleton from '@/components/hr/TableSkeleton.vue'
 
 const offerStore = useOfferStore()
+const message = useMessage()
 const filterStatus = ref<string>('')
 const showCreateModal = ref(false)
 const editingOffer = ref<Offer | null>(null)
@@ -34,17 +37,16 @@ const statusColorMap: Record<string, string> = {
 }
 
 const columns: DataTableColumns<Offer> = [
-  { title: '候选人', key: 'candidate_name', width: 120 },
-  { title: '岗位', key: 'position_title', width: 140, ellipsis: { tooltip: true } },
+  { title: '候选人', key: 'candidate_id', width: 120 },
+  { title: '岗位', key: 'position_id', width: 140, ellipsis: { tooltip: true } },
   {
     title: '状态',
     key: 'status',
     width: 100,
     render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] as any }, () => row.status),
   },
-  { title: '薪资', key: 'salary', width: 100, render: (row) => `${row.salary_currency} ${row.salary.toLocaleString()}` },
-  { title: '入职日期', key: 'start_date', width: 110 },
-  { title: '合同类型', key: 'contract_type', width: 90 },
+  { title: '基础薪资', key: 'base_salary', width: 100, render: (row) => row.base_salary ? `¥${row.base_salary.toLocaleString()}` : '-' },
+  { title: '入职日期', key: 'proposed_start_date', width: 110 },
   { title: '创建时间', key: 'created_at', width: 120 },
   {
     title: '操作',
@@ -78,11 +80,21 @@ function handleView(id: string) {
 }
 
 async function handleApprove(id: string) {
-  await offerStore.approveOffer(id)
+  try {
+    await offerStore.approveOffer(id)
+    message.success('Offer已审批')
+  } catch {
+    message.error('审批失败')
+  }
 }
 
 async function handleSend(id: string) {
-  await offerStore.sendOffer(id)
+  try {
+    await offerStore.sendOffer(id)
+    message.success('Offer已发送')
+  } catch {
+    message.error('发送失败')
+  }
 }
 
 function openCreateModal() {
@@ -90,46 +102,45 @@ function openCreateModal() {
   showCreateModal.value = true
 }
 
-function openEditModal(offer: Offer) {
-  editingOffer.value = offer
-  showCreateModal.value = true
-}
-
 function handleModalSaved() {
   showCreateModal.value = false
   editingOffer.value = null
   offerStore.fetchOffers()
+  message.success('操作成功')
 }
 </script>
 
 <template>
-  <div class="offers-view">
-    <header class="page-header">
-      <h2 class="header-title">Offer管理</h2>
-      <NButton type="primary" @click="openCreateModal">创建Offer</NButton>
-    </header>
+  <ErrorBoundary>
+    <div class="offers-view">
+      <header class="page-header">
+        <h2 class="header-title">Offer管理</h2>
+        <NButton type="primary" @click="openCreateModal">创建Offer</NButton>
+      </header>
 
-    <div class="filter-bar">
-      <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleFilter" />
-    </div>
+      <div class="filter-bar">
+        <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleFilter" />
+      </div>
 
-    <NSpin :show="offerStore.loading">
+      <TableSkeleton v-if="offerStore.loading" :rows="6" :columns="7" />
       <NDataTable
+        v-else
         :columns="columns"
         :data="offerStore.offers"
         :row-key="(row: Offer) => row.id"
         :pagination="{ pageSize: 20 }"
+        :scroll-x="900"
         striped
       />
-    </NSpin>
 
-    <OfferCreateModal
-      :show="showCreateModal"
-      :edit-data="editingOffer"
-      @close="showCreateModal = false"
-      @saved="handleModalSaved"
-    />
-  </div>
+      <OfferCreateModal
+        :show="showCreateModal"
+        :edit-data="editingOffer"
+        @close="showCreateModal = false"
+        @saved="handleModalSaved"
+      />
+    </div>
+  </ErrorBoundary>
 </template>
 
 <style scoped lang="scss">
@@ -144,6 +155,12 @@ function handleModalSaved() {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
+
+  @media (max-width: $breakpoint-mobile) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
 
   .header-title {
     font-size: 22px;

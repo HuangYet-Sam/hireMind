@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NCard, NButton, NDataTable, NInput, NSelect, NTag, NSpace, NAvatar, NSpin } from 'naive-ui'
+import { NButton, NDataTable, NInput, NSelect, NTag, NSpace, NAvatar, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useCandidateStore } from '@/stores/hr/candidates'
 import type { Candidate } from '@/api/hr/candidates'
 import CandidateCreateModal from '@/components/hr/CandidateCreateModal.vue'
+import ErrorBoundary from '@/components/hr/ErrorBoundary.vue'
+import TableSkeleton from '@/components/hr/TableSkeleton.vue'
 
 const candidateStore = useCandidateStore()
+const message = useMessage()
 const keyword = ref('')
 const filterStatus = ref('')
 const showCreateModal = ref(false)
@@ -51,12 +54,6 @@ const columns: DataTableColumns<Candidate> = [
     render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] as any }, () => row.status),
   },
   { title: '来源', key: 'source', width: 90 },
-  {
-    title: '匹配分',
-    key: 'match_score',
-    width: 80,
-    render: (row) => row.match_score !== null ? `${Math.round(row.match_score * 100)}%` : '-',
-  },
   { title: '经验(年)', key: 'years_of_experience', width: 80 },
   {
     title: '操作',
@@ -78,7 +75,6 @@ function handleSearch() {
 }
 
 function handleView(id: string) {
-  // TODO: navigate to 360° candidate view
   console.log('View candidate:', id)
 }
 
@@ -91,39 +87,43 @@ function handleModalSaved() {
   candidateStore.fetchCandidates()
   showCreateModal.value = false
   editingCandidate.value = null
+  message.success('操作成功')
 }
 </script>
 
 <template>
-  <div class="candidates-view">
-    <header class="page-header">
-      <h2 class="header-title">候选人</h2>
-      <NButton type="primary" @click="openCreateModal">添加候选人</NButton>
-    </header>
+  <ErrorBoundary>
+    <div class="candidates-view">
+      <header class="page-header">
+        <h2 class="header-title">候选人</h2>
+        <NButton type="primary" @click="openCreateModal">添加候选人</NButton>
+      </header>
 
-    <div class="filter-bar">
-      <NInput v-model:value="keyword" placeholder="搜索候选人..." clearable style="width: 240px;" @keyup.enter="handleSearch" />
-      <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleSearch" />
-      <NButton @click="handleSearch">搜索</NButton>
-    </div>
+      <div class="filter-bar">
+        <NInput v-model:value="keyword" placeholder="搜索候选人..." clearable style="width: 240px;" @keyup.enter="handleSearch" />
+        <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleSearch" />
+        <NButton @click="handleSearch">搜索</NButton>
+      </div>
 
-    <NSpin :show="candidateStore.loading">
+      <TableSkeleton v-if="candidateStore.loading" :rows="6" :columns="7" />
       <NDataTable
+        v-else
         :columns="columns"
         :data="candidateStore.candidates"
         :row-key="(row: Candidate) => row.id"
         :pagination="{ pageSize: 20 }"
+        :scroll-x="800"
         striped
       />
-    </NSpin>
 
-    <CandidateCreateModal
-      :show="showCreateModal"
-      :edit-data="editingCandidate"
-      @close="showCreateModal = false"
-      @saved="handleModalSaved"
-    />
-  </div>
+      <CandidateCreateModal
+        :show="showCreateModal"
+        :edit-data="editingCandidate"
+        @close="showCreateModal = false"
+        @saved="handleModalSaved"
+      />
+    </div>
+  </ErrorBoundary>
 </template>
 
 <style scoped lang="scss">
@@ -139,6 +139,12 @@ function handleModalSaved() {
   justify-content: space-between;
   margin-bottom: 20px;
 
+  @media (max-width: $breakpoint-mobile) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
   .header-title {
     font-size: 22px;
     font-weight: 600;
@@ -152,5 +158,14 @@ function handleModalSaved() {
   gap: 12px;
   align-items: center;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+
+  @media (max-width: $breakpoint-mobile) {
+    gap: 8px;
+
+    :deep(.n-input) {
+      width: 100% !important;
+    }
+  }
 }
 </style>

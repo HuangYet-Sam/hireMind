@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NCard, NButton, NDataTable, NSpace, NInput, NSelect, NTag, NSpin } from 'naive-ui'
+import { NCard, NButton, NDataTable, NSpace, NInput, NSelect, NTag, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { usePositionStore } from '@/stores/hr/positions'
 import type { Position } from '@/api/hr/positions'
 import PositionCreateModal from '@/components/hr/PositionCreateModal.vue'
+import ErrorBoundary from '@/components/hr/ErrorBoundary.vue'
+import TableSkeleton from '@/components/hr/TableSkeleton.vue'
 
 const positionStore = usePositionStore()
+const message = useMessage()
 const showCreateModal = ref(false)
 const editingPosition = ref<Position | null>(null)
 const keyword = ref('')
@@ -32,16 +35,15 @@ const statusColorMap: Record<string, string> = {
 
 const columns: DataTableColumns<Position> = [
   { title: '岗位名称', key: 'title', ellipsis: { tooltip: true } },
-  { title: '部门', key: 'department_name', width: 120 },
   { title: '地点', key: 'location', width: 100 },
-  { title: '类型', key: 'type', width: 80 },
+  { title: '类型', key: 'employment_type', width: 80 },
   {
     title: '状态',
     key: 'status',
     width: 90,
     render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] as any }, () => row.status),
   },
-  { title: '人数', key: 'headcount', width: 70, render: (row) => `${row.hired_count}/${row.headcount}` },
+  { title: '人数', key: 'headcount', width: 70 },
   { title: '优先级', key: 'priority', width: 80 },
   { title: '创建时间', key: 'created_at', width: 120 },
   {
@@ -77,7 +79,12 @@ function handleEdit(row: Position) {
 }
 
 async function handleDelete(id: string) {
-  await positionStore.deletePosition(id)
+  try {
+    await positionStore.deletePosition(id)
+    message.success('岗位已删除')
+  } catch {
+    message.error('删除失败')
+  }
 }
 
 function handleModalSaved() {
@@ -93,37 +100,40 @@ function handleModalClose() {
 </script>
 
 <template>
-  <div class="positions-view">
-    <header class="page-header">
-      <h2 class="header-title">岗位管理</h2>
-      <NButton type="primary" @click="handleCreate">新建岗位</NButton>
-    </header>
+  <ErrorBoundary>
+    <div class="positions-view">
+      <header class="page-header">
+        <h2 class="header-title">岗位管理</h2>
+        <NButton type="primary" @click="handleCreate">新建岗位</NButton>
+      </header>
 
-    <!-- Filters -->
-    <div class="filter-bar">
-      <NInput v-model:value="keyword" placeholder="搜索岗位名称..." clearable style="width: 240px;" @keyup.enter="handleSearch" />
-      <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleSearch" />
-      <NButton @click="handleSearch">搜索</NButton>
-    </div>
+      <!-- Filters -->
+      <div class="filter-bar">
+        <NInput v-model:value="keyword" placeholder="搜索岗位名称..." clearable style="width: 240px;" @keyup.enter="handleSearch" />
+        <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleSearch" />
+        <NButton @click="handleSearch">搜索</NButton>
+      </div>
 
-    <!-- Table -->
-    <NSpin :show="positionStore.loading">
+      <!-- Table -->
+      <TableSkeleton v-if="positionStore.loading" :rows="6" :columns="7" />
       <NDataTable
+        v-else
         :columns="columns"
         :data="positionStore.positions"
         :row-key="(row: Position) => row.id"
         :pagination="{ pageSize: 20 }"
+        :scroll-x="900"
         striped
       />
-    </NSpin>
 
-    <PositionCreateModal
-      :show="showCreateModal"
-      :edit-data="editingPosition"
-      @saved="handleModalSaved"
-      @close="handleModalClose"
-    />
-  </div>
+      <PositionCreateModal
+        :show="showCreateModal"
+        :edit-data="editingPosition"
+        @saved="handleModalSaved"
+        @close="handleModalClose"
+      />
+    </div>
+  </ErrorBoundary>
 </template>
 
 <style scoped lang="scss">
@@ -139,6 +149,12 @@ function handleModalClose() {
   justify-content: space-between;
   margin-bottom: 20px;
 
+  @media (max-width: $breakpoint-mobile) {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
   .header-title {
     font-size: 22px;
     font-weight: 600;
@@ -152,5 +168,14 @@ function handleModalClose() {
   gap: 12px;
   align-items: center;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+
+  @media (max-width: $breakpoint-mobile) {
+    gap: 8px;
+
+    :deep(.n-input) {
+      width: 100% !important;
+    }
+  }
 }
 </style>

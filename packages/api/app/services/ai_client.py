@@ -3,6 +3,8 @@ AI Service Client.
 
 Centralized client for LLM and Hermes Agent interactions.
 Handles API calls, error recovery, and fallback logic.
+
+Provider priority: Hermes Agent -> OpenAI -> Algorithmic fallback
 """
 
 import json
@@ -26,12 +28,12 @@ class AIClient:
         self._hermes_url = settings.HERMES_AGENT_URL
         self._hermes_key = settings.HERMES_AGENT_API_KEY
 
+    # ── Provider availability ───────────────────────────────────
+
     async def is_openai_available(self) -> bool:
-        """Check if OpenAI API is configured."""
         return bool(self._openai_key)
 
     async def is_hermes_available(self) -> bool:
-        """Check if Hermes Agent is reachable."""
         if not self._hermes_url:
             return False
         try:
@@ -41,7 +43,59 @@ class AIClient:
         except Exception:
             return False
 
-    async def chat_completion(
+    # ── Hermes Agent API ────────────────────────────────────────
+
+    async def hermes_chat_completion(
+        self,
+        messages: list[dict],
+        *,
+        model: str | None = None,
+        temperature: float = 0.1,
+        max_tokens: int = 4096,
+        response_format: dict | None = None,
+    ) -> dict | None:
+        """
+        Call Hermes Agent chat completion API (OpenAI-compatible).
+
+        Endpoint: {HERMES_AGENT_URL}/api/hermes/v1/chat/completions
+        """
+        if not self._hermes_url:
+            return None
+
+        url = f"{self._hermes_url}/api/hermes/v1/chat/completions"
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._hermes_key:
+            headers["Authorization"] = f"Bearer {self._hermes_key}"
+
+        payload: dict[str, Any] = {
+            "model": model or "default",
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if response_format:
+            payload["response_format"] = response_format
+
+        try:
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+                content = data["choices"][0]["message"]["content"]
+
+                if response_format and response_format.get("type") == "json_object":
+                    return json.loads(content)
+                return {"content": content}
+        except httpx.HTTPStatusError as exc:
+            logger.warning("Hermes API error: %s %s", exc.response.status_code, exc.response.text[:200])
+            return None
+        except Exception as exc:
+            logger.warning("Hermes request failed: %s", exc)
+            return None
+
+    # ── OpenAI API ──────────────────────────────────────────────
+
+    async def openai_chat_completion(
         self,
         messages: list[dict],
         *,
@@ -52,12 +106,8 @@ class AIClient:
     ) -> dict | None:
         """
         Call OpenAI Chat Completion API.
-
-        Returns parsed JSON if response_format is set, else raw content dict.
-        Returns None if API is unavailable.
         """
         if not self._openai_key:
-            logger.warning("OpenAI API key not configured")
             return None
 
         url = f"{self._openai_base}/chat/completions"
@@ -85,21 +135,62 @@ class AIClient:
                     return json.loads(content)
                 return {"content": content}
         except httpx.HTTPStatusError as exc:
-            logger.error(
-                "OpenAI API error: %s %s",
-                exc.response.status_code,
-                exc.response.text[:200],
-            )
+            logger.error("OpenAI API error: %s %s", exc.response.status_code, exc.response.text[:200])
             return None
         except Exception as exc:
             logger.error("OpenAI request failed: %s", exc)
             return None
 
+    # ── Unified chat (Hermes first, OpenAI fallback) ────────────
+
+    async def chat_completion(
+        self,
+        messages: list[dict],
+        *,
+        model: str | None = None,
+        temperature: float = 0.1,
+        max_tokens: int = 4096,
+        response_format: dict | None = None,
+        prefer_hermes: bool = True,
+    ) -> dict | None:
+        """
+        Unified chat completion with provider fallback.
+
+        Priority: Hermes Agent -> OpenAI -> None
+        """
+        if prefer_hermes:
+            result = await self.hermes_chat_completion(
+                messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+            )
+            if result is not None:
+                logger.debug("Used Hermes Agent for chat completion")
+                return result
+
+        result = await self.openai_chat_completion(
+            messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+        )
+        if result is not None:
+            logger.debug("Used OpenAI for chat completion")
+            return result
+
+        logger.warning("All AI providers unavailable")
+        return None
+
+    # ── High-level AI capabilities ──────────────────────────────
+
     async def parse_resume_with_ai(self, resume_text: str) -> dict | None:
         """
-        Use OpenAI to parse resume text into structured data.
+        Parse resume text into structured data.
 
-        Returns parsed resume dict or None if AI is unavailable.
+        Priority: Hermes Agent -> OpenAI -> None
         """
         system_prompt = """You are an expert resume parser. Extract the following information from the resume text and return it as a JSON object with these exact fields:
 
@@ -162,7 +253,9 @@ Rules:
         candidate_info: dict,
     ) -> dict | None:
         """
-        Use OpenAI to provide AI-enhanced matching score between position and candidate.
+        AI-enhanced matching score between position and candidate.
+
+        Priority: Hermes Agent -> OpenAI -> None
 
         Returns {"ai_score": 0-100, "ai_reasoning": "explanation"} or None.
         """
@@ -187,6 +280,91 @@ Return JSON: {"ai_score": 75, "ai_reasoning": "explanation"}"""
             messages,
             response_format={"type": "json_object"},
             max_tokens=512,
+        )
+
+    async def generate_interview_questions(
+        self,
+        position_info: dict,
+        candidate_info: dict,
+        interview_type: str = "technical",
+        num_questions: int = 5,
+    ) -> dict | None:
+        """
+        Generate interview questions tailored to a position-candidate pair.
+
+        Returns {"questions": [...], "suggested_duration_minutes": int} or None.
+        """
+        system_prompt = f"""You are an expert interviewer. Generate {num_questions} {interview_type} interview questions for the given position and candidate.
+
+Return JSON:
+{{
+  "questions": [
+    {{
+      "question": "The question text",
+      "category": "technical/behavioral/system/case",
+      "difficulty": "easy/medium/hard",
+      "expected_answer_points": ["point1", "point2"]
+    }}
+  ],
+  "suggested_duration_minutes": 60
+}}"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {"position": position_info, "candidate": candidate_info},
+                    ensure_ascii=False,
+                ),
+            },
+        ]
+
+        return await self.chat_completion(
+            messages,
+            response_format={"type": "json_object"},
+            max_tokens=2048,
+        )
+
+    async def generate_offer_recommendation(
+        self,
+        candidate_info: dict,
+        position_info: dict,
+        market_data: dict | None = None,
+    ) -> dict | None:
+        """
+        Generate AI-powered offer recommendation with salary analysis.
+
+        Returns {"recommended_salary": int, "reasoning": str, "risk_factors": [...]} or None.
+        """
+        system_prompt = """You are a compensation expert. Based on the candidate profile, position details, and market data, recommend a fair salary range and identify risk factors.
+
+Return JSON:
+{
+  "recommended_base_salary": 25000,
+  "salary_range_low": 20000,
+  "salary_range_high": 30000,
+  "reasoning": "Explanation of the recommendation",
+  "risk_factors": ["risk1", "risk2"],
+  "negotiation_tips": ["tip1", "tip2"]
+}"""
+
+        payload = {
+            "candidate": candidate_info,
+            "position": position_info,
+        }
+        if market_data:
+            payload["market_data"] = market_data
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ]
+
+        return await self.chat_completion(
+            messages,
+            response_format={"type": "json_object"},
+            max_tokens=1024,
         )
 
 
