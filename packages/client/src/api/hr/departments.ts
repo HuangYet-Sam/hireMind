@@ -31,10 +31,17 @@ export interface UpdateDepartmentRequest {
   head_name?: string | null
 }
 
+export interface DepartmentListParams {
+  page?: number
+  page_size?: number
+  keyword?: string
+  parent_id?: string
+}
+
 // ─── API Functions ──────────────────────────────────────
 
-export async function listDepartments(): Promise<Department[]> {
-  return hrGet<Department[]>('/departments')
+export async function listDepartments(params?: DepartmentListParams): Promise<PaginatedResponse<Department>> {
+  return hrGet<PaginatedResponse<Department>>('/departments', params as Record<string, string | number>)
 }
 
 export async function getDepartmentTree(): Promise<Department[]> {

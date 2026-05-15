@@ -1,6 +1,7 @@
 services:
   hermes-agent:
     image: ${HERMES_AGENT_IMAGE:-nousresearch/hermes-agent:latest}
+    pull_policy: always
     container_name: ${HERMES_AGENT_CONTAINER_NAME:-hermes-agent}
     volumes:
       - ${HERMES_DATA_DIR:-./hermes_data}:/home/agent/.hermes

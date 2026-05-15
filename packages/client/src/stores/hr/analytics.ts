@@ -1,13 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as analyticsApi from '@/api/hr/analytics'
-import type { KpiSummary, RecruitmentFunnel, HiringTrend, PositionMetrics } from '@/api/hr/analytics'
+import type { DashboardData, PipelineStage, TimeToHirePeriod } from '@/api/hr/analytics'
 
 export const useAnalyticsStore = defineStore('hr-analytics', () => {
-  const kpi = ref<KpiSummary | null>(null)
-  const funnel = ref<RecruitmentFunnel[]>([])
-  const trends = ref<HiringTrend[]>([])
-  const positionMetrics = ref<PositionMetrics[]>([])
+  const kpi = ref<DashboardData | null>(null)
+  const funnel = ref<PipelineStage[]>([])
+  const timeToHire = ref<TimeToHirePeriod[]>([])
   const loading = ref(false)
 
   async function fetchKpi(params?: Record<string, string>) {
@@ -26,19 +25,11 @@ export const useAnalyticsStore = defineStore('hr-analytics', () => {
     }
   }
 
-  async function fetchTrends(params?: Record<string, string>) {
+  async function fetchTimeToHire(params?: Record<string, string>) {
     try {
-      trends.value = await analyticsApi.getHiringTrends(params)
+      timeToHire.value = await analyticsApi.getTimeToHire(params)
     } catch (err) {
-      console.error('Failed to fetch trends:', err)
-    }
-  }
-
-  async function fetchPositionMetrics(params?: Record<string, string>) {
-    try {
-      positionMetrics.value = await analyticsApi.getPositionMetrics(params)
-    } catch (err) {
-      console.error('Failed to fetch position metrics:', err)
+      console.error('Failed to fetch time-to-hire:', err)
     }
   }
 
@@ -59,7 +50,7 @@ export const useAnalyticsStore = defineStore('hr-analytics', () => {
       await Promise.all([
         fetchKpi(params),
         fetchFunnel(params),
-        fetchTrends(params),
+        fetchTimeToHire(params),
       ])
     } finally {
       loading.value = false
@@ -67,7 +58,7 @@ export const useAnalyticsStore = defineStore('hr-analytics', () => {
   }
 
   return {
-    kpi, funnel, trends, positionMetrics, loading,
-    fetchKpi, fetchFunnel, fetchTrends, fetchPositionMetrics, fetchDashboard, fetchAll,
+    kpi, funnel, timeToHire, loading,
+    fetchKpi, fetchFunnel, fetchTimeToHire, fetchDashboard, fetchAll,
   }
 })

@@ -27,10 +27,10 @@ const statusColorMap: Record<string, string> = {
 }
 
 const columns: DataTableColumns<Interview> = [
-  { title: '候选人', key: 'candidate_name', width: 120 },
-  { title: '岗位', key: 'position_title', width: 140, ellipsis: { tooltip: true } },
-  { title: '轮次', key: 'round', width: 60 },
-  { title: '类型', key: 'type', width: 100 },
+  { title: '候选人ID', key: 'candidate_id', width: 120 },
+  { title: '岗位ID', key: 'position_id', width: 140, ellipsis: { tooltip: true } },
+  { title: '轮次', key: 'round_number', width: 60 },
+  { title: '类型', key: 'interview_type', width: 100 },
   {
     title: '状态',
     key: 'status',
@@ -39,7 +39,7 @@ const columns: DataTableColumns<Interview> = [
   },
   { title: '时间', key: 'scheduled_at', width: 160 },
   { title: '时长(分)', key: 'duration_minutes', width: 80 },
-  { title: '评分', key: 'score', width: 70, render: (row) => row.score !== null ? `${row.score}/10` : '-' },
+  { title: '评分', key: 'overall_score', width: 70, render: (row) => row.overall_score !== null ? `${row.overall_score}/10` : '-' },
   {
     title: '操作',
     key: 'actions',

@@ -1,55 +1,54 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as matchingApi from '@/api/hr/matching'
-import type { MatchResult, MatchRequest } from '@/api/hr/matching'
+import type { MatchResult, MatchRequestParams } from '@/api/hr/matching'
 
 export const useMatchingStore = defineStore('hr-matching', () => {
   const matches = ref<MatchResult[]>([])
-  const currentMatrix = ref<MatchResult[]>([])
   const loading = ref(false)
 
-  async function fetchMatches(params?: Record<string, string | number>) {
+  async function matchCandidatesForPosition(positionId: string, params?: MatchRequestParams): Promise<MatchResult[]> {
     loading.value = true
     try {
-      matches.value = await matchingApi.listMatches(params)
+      const result = await matchingApi.matchCandidatesForPosition(positionId, params)
+      matches.value = result.matches
+      return result.matches
     } catch (err) {
-      console.error('Failed to fetch matches:', err)
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function matchPosition(data: MatchRequest): Promise<MatchResult[]> {
-    loading.value = true
-    try {
-      const results = await matchingApi.matchPositionToCandidates(data)
-      matches.value = results
-      return results
-    } catch (err) {
-      console.error('Failed to match position:', err)
+      console.error('Failed to match candidates for position:', err)
       return []
     } finally {
       loading.value = false
     }
   }
 
-  async function fetchMatchMatrix(positionId: string) {
+  async function matchPositionsForCandidate(candidateId: string, params?: MatchRequestParams): Promise<MatchResult[]> {
     loading.value = true
     try {
-      currentMatrix.value = await matchingApi.getMatchMatrix(positionId)
+      const result = await matchingApi.matchPositionsForCandidate(candidateId, params)
+      matches.value = result.matches
+      return result.matches
     } catch (err) {
-      console.error('Failed to fetch match matrix:', err)
+      console.error('Failed to match positions for candidate:', err)
+      return []
     } finally {
       loading.value = false
     }
   }
 
-  async function batchMatch(positionIds: string[], candidateIds?: string[]) {
-    return matchingApi.batchMatch({ position_ids: positionIds, candidate_ids: candidateIds })
+  async function fetchMatchResult(positionId: string) {
+    loading.value = true
+    try {
+      const result = await matchingApi.getMatchResult(positionId)
+      if (result) matches.value = result.matches
+    } catch (err) {
+      console.error('Failed to fetch match result:', err)
+    } finally {
+      loading.value = false
+    }
   }
 
   return {
-    matches, currentMatrix, loading,
-    fetchMatches, matchPosition, fetchMatchMatrix, batchMatch,
+    matches, loading,
+    matchCandidatesForPosition, matchPositionsForCandidate, fetchMatchResult,
   }
 })

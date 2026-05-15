@@ -7,7 +7,7 @@ All models inherit from Base and optionally use the TenantMixin / TimestampMixin
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, func
+from sqlalchemy import DateTime, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -56,7 +56,3 @@ class PrimaryKeyMixin:
         primary_key=True,
         default=uuid.uuid4,
     )
-
-
-# Fix: import String for TenantMixin
-from sqlalchemy import String  # noqa: E402

@@ -38,3 +38,11 @@ hermes-dependencies.md
 CLAUDE.md
 # Client source map artifacts
 packages/client/src/**/*.js
+
+# Uploads
+packages/api/uploads/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

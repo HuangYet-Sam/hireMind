@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { NModal, NCard, NTabs, NTabPane, NTag, NSpin, NEmpty } from 'naive-ui'
 import type { Resume } from '@/api/hr/resumes'
 
@@ -26,27 +26,21 @@ const activeTab = ref('parsed')
     <template v-if="resume">
       <div class="resume-header">
         <h3>{{ resume.filename }}</h3>
-        <NTag v-if="resume.candidate_name" size="small">{{ resume.candidate_name }}</NTag>
+        <NTag v-if="resume.candidate_id" size="small">{{ resume.candidate_id }}</NTag>
       </div>
 
       <NTabs v-model:value="activeTab" type="line">
         <NTabPane name="parsed" tab="解析内容">
-          <div v-if="resume.parsed_content" class="parsed-content" v-html="resume.parsed_content" />
+          <div v-if="resume.parsed_data" class="parsed-content">
+            <pre>{{ JSON.stringify(resume.parsed_data, null, 2) }}</pre>
+          </div>
           <NEmpty v-else description="解析内容为空" />
         </NTabPane>
 
-        <NTabPane name="skills" tab="技能标签">
+        <NTabPane name="tags" tab="标签">
           <div class="tag-list">
-            <NTag v-for="tag in resume.parsed_skills" :key="tag" size="small" style="margin: 4px;">{{ tag }}</NTag>
+            <NTag v-for="tag in resume.tags" :key="tag" size="small" style="margin: 4px;">{{ tag }}</NTag>
           </div>
-        </NTabPane>
-
-        <NTabPane name="ai" tab="AI分析">
-          <div v-if="resume.ai_summary" class="ai-summary">{{ resume.ai_summary }}</div>
-          <div class="tag-list" style="margin-top: 8px;">
-            <NTag v-for="tag in resume.ai_tags" :key="tag" size="small" type="info" style="margin: 4px;">{{ tag }}</NTag>
-          </div>
-          <NEmpty v-if="!resume.ai_summary && !resume.ai_tags.length" description="暂无AI分析" />
         </NTabPane>
       </NTabs>
     </template>
@@ -79,21 +73,17 @@ const activeTab = ref('parsed')
   padding: 8px;
   background: $bg-secondary;
   border-radius: 6px;
+
+  pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
 }
 
 .tag-list {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-}
-
-.ai-summary {
-  font-size: 14px;
-  line-height: 1.6;
-  color: $text-secondary;
-  padding: 12px;
-  background: rgba(var(--accent-info-rgb), 0.06);
-  border-radius: 6px;
-  border-left: 3px solid var(--accent-info);
 }
 </style>

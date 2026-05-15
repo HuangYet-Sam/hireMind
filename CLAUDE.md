@@ -4,142 +4,200 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Hermes Web UI is a web dashboard for Hermes Agent — a multi-platform AI chat system. It provides session management, scheduled jobs, usage analytics, model configuration, platform channel management (Telegram, Discord, Slack, WhatsApp, Matrix, Feishu, WeChat, WeCom), group chat, kanban board, file management, an integrated terminal, and a streaming chat interface.
+**HireMind** is an AI-native recruitment system, forked from [hermes-web-ui](https://github.com/EKKOLearnAI/hermes-web-ui). It combines the original Hermes Agent admin dashboard with a new HireMind HR recruitment platform.
 
-The project is designed for **multi-agent extensibility** — Hermes is the first agent integration. All agent-specific code is namespaced under `hermes/` directories, so future agents can be added alongside without conflicts.
+Two subsystems share the same Vue frontend:
+
+| Subsystem | Routes | Backend | Purpose |
+|-----------|--------|---------|---------|
+| **Hermes Admin** | `/hermes/*` (16 pages) | Koa BFF on `:8648` | AI agent management, chat, models, channels, jobs |
+| **HireMind HR** | `/hr/*` (10 pages) | FastAPI on `:8000` | Positions, candidates, resumes, matching, interviews, offers |
+
+**Architecture overview:**
+```
+┌─ Vue 3 Frontend (:8648 Vite dev) ─────────────────────────┐
+│  /hermes/* → Koa BFF (:8648) → Hermes Agent (:8642)       │
+│  /hr/*     → FastAPI (:8000) → PostgreSQL + MinIO + Redis │
+└────────────────────────────────────────────────────────────┘
+```
 
 **Tech stack:**
-
 - **Frontend:** Vue 3 (Composition API, `<script setup lang="ts">`), Naive UI, Pinia, vue-router (hash history), vue-i18n, SCSS, Vite
-- **Backend:** Koa 2, @koa/router v15+, Socket.IO, node-pty (WebSocket terminal), reverse proxy to Hermes gateway
-- **Database:** SQLite (via better-sqlite3, managed in `packages/server/src/db/`)
-- **Language:** TypeScript (strict mode), single package (no workspaces)
+- **Hermes Backend:** Koa 2, @koa/router v15+, Socket.IO, node-pty, SQLite, reverse proxy to Hermes gateway
+- **HR Backend:** Python 3.12+, FastAPI, SQLAlchemy async (PostgreSQL), Alembic, Redis, MinIO, PyJWT
+- **Language:** TypeScript (strict, both client/server) + Python (HR backend)
 - **Node:** >= 23.0.0
 
 ---
 
 ## Development Commands
 
+### Hermes (Node.js)
+
 ```bash
-npm run dev           # Start both server (nodemon) and client (Vite) concurrently
-npm run dev:client    # Vite dev server only (proxies API to backend)
-npm run dev:server    # nodemon + ts-node for server only
-npm run build         # Type-check (vue-tsc) -> Vite build -> esbuild server bundle
-npm run preview       # Preview production build with Vite
-npm run test          # Run tests (vitest)
-npm run test:watch    # Run tests in watch mode
-npm run test:coverage # Run tests with coverage report
-npx vitest run tests/client/session-search.test.ts   # Run a single test file
-npx vitest run tests/client/session-search.test.ts -t "test name"  # Run a single test case
+npm run dev           # Start Koa server + Vite client concurrently
+npm run dev:client    # Vite dev server only (proxies API to Koa backend)
+npm run dev:server    # nodemon + ts-node for Koa server only
+npm run build         # vue-tsc → Vite build → tsc server check → esbuild server bundle
+npm run test          # vitest run
+npm run test:watch    # vitest watch
+npx vitest run tests/server/sessions-db.test.ts           # Single test file
+npx vitest run tests/server/sessions-db.test.ts -t "foo"  # Single test case
 ```
 
-- **Dev port:** 8648 (client Vite dev server proxies `/api`, `/v1`, `/health`, `/upload`, `/webhook`, `/socket.io` to `http://127.0.0.1:8648`)
-- **Prerequisite:** `hermes` CLI must be installed and on `$PATH` (the server wraps it via `child_process.execFile`)
+- **Dev port:** 8648 (Vite proxies `/api`, `/v1`, `/health`, `/upload`, `/webhook`, `/socket.io` to Koa)
+- **Prerequisite:** `hermes` CLI on `$PATH` (Koa wraps it via `child_process.execFile`)
+
+### HR Backend (Python)
+
+```bash
+cd packages/api
+python -m venv .venv && source .venv/bin/activate  # Create/activate venv
+pip install -r requirements.txt
+alembic upgrade head          # Run database migrations
+uvicorn app.main:app --reload # Start FastAPI dev server (port 8000)
+pytest                        # Run Python tests
+pytest tests/test_health.py   # Single test file
+```
+
+- **Dev port:** 8000 (FastAPI)
+- **Docs:** `http://localhost:8000/api/docs` (Swagger), `/api/redoc` (ReDoc)
+- **Prerequisites:** PostgreSQL, Redis, MinIO running locally
 
 ---
 
 ## Architecture
 
-### Top-Level Layout
+### Directory Layout
 
 ```
 packages/
-├── client/src/          # Vue 3 frontend
-│   ├── api/             # API layer (shared client.ts + hermes/ modules)
-│   ├── components/      # layout/ (shared) + hermes/ (feature components)
-│   ├── composables/     # useKeyboard, useTheme
-│   ├── i18n/locales/    # en, zh, de, es, fr, ja, ko, pt
-│   ├── router/          # Hash-based routing, auth guard
-│   ├── stores/hermes/   # Pinia stores (app, chat, models, settings, usage, etc.)
-│   ├── styles/          # SCSS variables, global, code-block, theme
-│   └── views/hermes/    # Page-level components (chat, jobs, models, kanban, etc.)
-├── server/src/          # Koa BFF server
-│   ├── controllers/     # Request handlers (shared + hermes/)
-│   ├── db/              # SQLite database layer (init, schemas, stores)
-│   ├── lib/             # Shared utilities (llm-json, context-compressor, llm-prompt)
-│   ├── routes/          # Route registration (shared + hermes/)
-│   ├── services/        # Business logic (auth, config, logger + hermes/)
-│   └── index.ts         # Bootstrap: middleware → routes → static → Socket.IO
+├── client/src/            # Vue 3 frontend (shared for both subsystems)
+│   ├── api/
+│   │   ├── client.ts      # Shared base: Hermes BFF fetch wrapper
+│   │   ├── hr/client.ts   # HR API client: direct connection to FastAPI :8000
+│   │   ├── hermes/        # Hermes API modules (~25 files)
+│   │   └── hr/            # HR API modules (~10 files)
+│   ├── components/
+│   │   ├── layout/        # Shared: AppSidebar, ModelSelector, HrLayout
+│   │   ├── hermes/        # Hermes components (~12 feature dirs)
+│   │   └── hr/            # HR components: CandidateCard, MatchScore, ResumeViewer, etc.
+│   ├── composables/       # Shared composables (useKeyboard, useTheme, useSmartConfig, etc.)
+│   ├── i18n/locales/      # 8 locales: en, zh, de, es, fr, ja, ko, pt
+│   ├── router/index.ts    # All routes for both subsystems
+│   ├── stores/
+│   │   ├── hermes/        # Hermes Pinia stores (~12)
+│   │   └── hr/            # HR Pinia stores (~8)
+│   ├── styles/            # SCSS: variables, global, code-block, theme
+│   └── views/
+│       ├── LoginView.vue  # Shared login page
+│       ├── hermes/        # Hermes pages (~18 views)
+│       └── hr/            # HR pages (~10 views)
+├── server/src/            # Koa BFF server (Hermes admin)
+│   ├── controllers/hermes/  # ~23 controller files
+│   ├── db/hermes/           # SQLite layer (schemas, session-store, usage-store, etc.)
+│   ├── lib/                 # Shared utils (llm-json, context-compressor, llm-prompt)
+│   ├── routes/hermes/       # ~31 route files (thin wrappers)
+│   └── services/hermes/     # ~25 service files + context-engine/ + group-chat/
+├── api/                   # Python FastAPI backend (HR recruitment)
+│   ├── app/
+│   │   ├── main.py        # FastAPI entry, lifespan, middleware, router registration
+│   │   ├── config.py      # Pydantic Settings (env-based)
+│   │   ├── dependencies.py # DB session, pagination, auth stubs
+│   │   ├── decorators/ai_capability.py  # @AiCapability decorator for AI-fn endpoints
+│   │   ├── middleware/     # auth.py, rbac.py, audit.py
+│   │   ├── models/        # SQLAlchemy models (candidate, position, interview, offer, resume, department)
+│   │   ├── routers/       # FastAPI route handlers (~8 routers)
+│   │   ├── schemas/       # Pydantic request/response schemas
+│   │   └── services/      # Business logic (~8 services)
+│   ├── alembic/           # Database migrations
+│   ├── tests/             # pytest tests
+│   └── Dockerfile
+docs/                      # Design docs, architecture, API specs, PRD references
+prd/                       # Product requirements (HireMind-PRD-V3.5.md, V3.6.md)
 ```
 
-### Request Flow
+### Frontend Routing
 
-1. **Public routes** (no auth): health, webhook, auth (login/token)
+Router in `packages/client/src/router/index.ts` defines both subsystems:
+
+- **Hermes routes** — flat paths: `/hermes/chat`, `/hermes/jobs`, `/hermes/models`, etc.
+- **HR routes** — nested under `HrLayout.vue`: `/hr/dashboard`, `/hr/positions`, `/hr/candidates`, `/hr/matching`, `/hr/interviews`, `/hr/offers`, `/hr/analytics`, `/hr/tasks`, `/hr/org-chart`
+
+Auth guard: `router.beforeEach` redirects unauthenticated users to `/` (login). Public routes use `meta: { public: true }`.
+
+### Two API Clients
+
+The frontend has **two separate API clients**:
+
+1. **Hermes BFF** (`api/client.ts`) — `request<T>()` fetch wrapper to Koa `:8648`. Auto `Authorization: Bearer` header, 401 redirect to login.
+2. **HR API** (`api/hr/client.ts`) — `hrGet/hrPost/hrPut/hrPatch/hrDelete` helpers connecting **directly** to FastAPI `:8000/api/v1`. Uses `hermes_api_key` from localStorage and `X-Tenant-Id` header.
+
+### Hermes Backend Request Flow
+
+1. **Public routes** (no auth): health, webhook, auth
 2. **Auth middleware** (`requireAuth`)
-3. **Protected routes**: handled locally by Koa controllers → services → Hermes CLI or SQLite
-4. **Proxy catch-all**: unmatched `/api/hermes/*` and `/v1/*` → forwarded to upstream Hermes gateway
+3. **Protected routes**: Koa controllers → services → Hermes CLI or SQLite
+4. **Proxy catch-all**: unmatched `/api/hermes/*` → upstream Hermes gateway
 
-**Critical:** Custom API endpoints handled locally must be registered in `routes/index.ts` **before** `proxyRoutes`. The proxy catch-all matches all `/api/hermes/*` paths.
+**Critical:** Custom endpoints must be registered in `routes/index.ts` **before** `proxyRoutes`.
 
-### Real-Time Communication
+### Hermes Real-Time
 
-Two Socket.IO namespaces share the same HTTP server:
+Two Socket.IO namespaces on the Koa HTTP server:
+- **`/chat-run`** — Streaming chat (Socket.IO rooms by session_id, resume on reconnect)
+- **`/` (group-chat)** — Multi-agent group chat rooms
 
-- **`/chat-run`** — Streaming chat. Replaces the old HTTP POST + SSE approach. Socket.IO rooms keyed by `session_id`. Client emits events to start runs, server streams upstream gateway events back. Handles disconnect/reconnect via `resume` event.
-- **`/` (default namespace, group-chat)** — Multi-agent group chat rooms. Agents join rooms, messages relay between human members and AI agents via the context engine.
+Terminal uses raw WebSocket at `/api/hermes/terminal` with `node-pty`.
 
-Terminal still uses raw WebSocket at `/api/hermes/terminal` with `node-pty`.
+### Hermes Database (SQLite)
 
-### Database Layer (`packages/server/src/db/`)
+Initialized on startup via `initAllStores()`. Schema in `db/hermes/schemas.ts`. Key stores: session-store, sessions-db, usage-store, kanban-db, conversations-db.
 
-SQLite stores initialized on startup via `initAllStores()`. Key tables:
+### HR Backend Architecture (FastAPI)
 
-- **session-store** — Local session data with message history, token counts, compression snapshots
-- **sessions-db** — Session list synced from Hermes `state.db` on first startup
-- **usage-store** — Token usage analytics
-- **kanban-db** — Kanban board tasks and columns
-- **conversations-db** — Conversation metadata with schema sync
+Follows layered pattern: **Router → Service → Model**:
+- **Routers** (`app/routers/`) — endpoint definitions, delegate to services
+- **Services** (`app/services/`) — business logic (many TODO stubs for Hermes Agent AI integration)
+- **Models** (`app/models/`) — SQLAlchemy ORM models
+- **Schemas** (`app/schemas/`) — Pydantic validation schemas
+- **Dependencies** (`app/dependencies.py`) — async DB session (`get_db`), pagination (`PaginationParams`), auth stubs (`get_current_user`)
 
-Schema definitions in `db/hermes/schemas.ts`. Store modules export CRUD functions used by controllers.
+Middleware stack (outermost first): `AuditLogMiddleware` → `RBACMiddleware` → `AuthMiddleware`.
 
-### Context Engine (`packages/server/src/services/hermes/context-engine/`)
+**`@AiCapability` decorator** (`app/decorators/ai_capability.py`) — marks endpoints that require AI capabilities from Hermes Agent. Supports fallback functions and timeout.
 
-Compresses conversation history for long sessions. Composed of:
-- **compressor.ts** — Main compression logic
-- **gateway-client.ts** — Calls LLM for summarization via the upstream gateway
-- **prompt.ts** — System prompts for summarization
-- **summary-cache.ts** — Caches compressed summaries
+### HR Data Layer
 
-### Group Chat (`packages/server/src/services/hermes/group-chat/`)
-
-Multi-agent chat system where AI agents join rooms as members. Uses Socket.IO for real-time messaging and the context engine for message compression.
-
-### Bootstrap Sequence (`packages/server/src/index.ts`)
-
-1. Create data/upload directories, get auth token
-2. Init Koa app, init gateway manager
-3. Register CORS, body parser, all routes
-4. Serve static SPA with fallback to `index.html`
-5. Start HTTP server
-6. Setup terminal WebSocket, Group Chat Socket.IO, Chat Run Socket.IO
-7. Start session deleter (drains pending session deletes)
-8. Bind graceful shutdown handler, start version check
+- **PostgreSQL** (async via asyncpg + SQLAlchemy) — core business data
+- **Redis** — caching and sessions
+- **MinIO** — resume file storage
+- **Alembic** — database migrations
 
 ---
 
 ## Naming Conventions
 
-### Multi-Agent Namespacing
+### Multi-Domain Namespacing
 
-All agent-specific code lives under `{agent-name}/` subdirectories:
+All domain-specific code uses directory-based namespacing:
 
-| Layer | Shared | Hermes |
-|-------|--------|--------|
-| API | `api/client.ts` | `api/hermes/*.ts` |
-| Components | `components/layout/` | `components/hermes/*/*.vue` |
-| Views | `views/LoginView.vue` | `views/hermes/*.vue` |
-| Stores | — | `stores/hermes/*.ts` |
-| Controllers | `controllers/*.ts` | `controllers/hermes/*.ts` |
-| Routes | `routes/*.ts` | `routes/hermes/*.ts` |
-| Services | `services/*.ts` | `services/hermes/*.ts` |
-| Route names | `login` | `hermes.{page}` |
-| API paths | `/health`, `/upload`, `/webhook` | `/api/hermes/*` |
+| Layer | Shared | Hermes | HR |
+|-------|--------|--------|----|
+| API | `api/client.ts` | `api/hermes/*.ts` | `api/hr/*.ts` |
+| Components | `components/layout/` | `components/hermes/` | `components/hr/` |
+| Views | `views/LoginView.vue` | `views/hermes/` | `views/hr/` |
+| Stores | — | `stores/hermes/` | `stores/hr/` |
+| Controllers | `controllers/*.ts` | `controllers/hermes/` | Python routers |
+| Routes | `routes/*.ts` | `routes/hermes/` | Python routers |
+| Services | `services/*.ts` | `services/hermes/` | Python services |
+| Route names | `login` | `hermes.{page}` | `hr.{page}` |
+| API paths | `/health` | `/api/hermes/*` | `/api/v1/{resource}` |
 
 ### Route Naming
 
-- **Shared routes:** `login`
-- **Agent routes:** `{agent}.{page}` — e.g., `hermes.chat`, `hermes.jobs`, `hermes.kanban`
-- **Route paths:** `/hermes/{page}` — e.g., `/hermes/chat`, `/hermes/group-chat`
+- **Hermes:** `hermes.chat`, `hermes.jobs`, `hermes.kanban` → `/hermes/{page}`
+- **HR:** `hr.dashboard`, `hr.positions`, `hr.candidates` → `/hr/{page}` (nested under HrLayout)
 
 ---
 
@@ -147,184 +205,144 @@ All agent-specific code lives under `{agent-name}/` subdirectories:
 
 ### Vue Components
 
-All components use `<script setup lang="ts">` with the Composition API:
-
-```vue
-<script setup lang="ts">
-import { ref } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { NButton, useMessage } from 'naive-ui'
-import { someApi } from '@/api/hermes/something'
-
-const { t } = useI18n()
-const message = useMessage()
-const loading = ref(false)
-
-async function handleAction() {
-  loading.value = true
-  try {
-    await someApi()
-    message.success(t('common.saved'))
-  } catch {
-    message.error(t('common.saveFailed'))
-  } finally {
-    loading.value = false
-  }
-}
-</script>
-
-<template>
-  <div class="my-component">
-    <NButton :loading="loading" @click="handleAction">{{ t('common.save') }}</NButton>
-  </div>
-</template>
-
-<style scoped lang="scss">
-@use '@/styles/variables' as *;
-
-.my-component {
-  padding: 16px;
-}
-</style>
-```
-
-Key patterns:
-- Import Naive UI components directly from `naive-ui`
-- `useMessage()` for toast notifications, `useI18n()` for translations
+All use `<script setup lang="ts">` with Composition API:
+- Import Naive UI directly from `naive-ui`
+- `useMessage()` for toast, `useI18n()` for translations (`t('key.path')`)
 - Scoped SCSS with `@use '@/styles/variables' as *`
 
 ### Pinia Stores
 
-Use setup store syntax (function passed to `defineStore`). Stores live in `packages/client/src/stores/hermes/`.
-
-### API Layer
-
-Shared base `api/client.ts` provides:
-- `request<T>(path, options)` — typed fetch wrapper with auto `Authorization: Bearer` header and 401 handling
-- `getApiKey()` / `setApiKey()` / `clearApiKey()` — token management via `localStorage`
-
-**API path rules:**
-- Local BFF endpoints: `/api/hermes/{resource}` — handled by Koa routes
-- Gateway proxy endpoints: `/api/hermes/v1/*`, `/api/hermes/jobs/*` — forwarded to upstream
-- Shared endpoints: `/health`, `/upload`, `/webhook` — no agent prefix
+Setup store syntax (function passed to `defineStore`). Stores in `stores/hermes/` and `stores/hr/`.
 
 ### i18n
 
-Eight locales in `packages/client/src/i18n/locales/`: `en`, `zh`, `de`, `es`, `fr`, `ja`, `ko`, `pt`. Flat nested object structure. When adding new strings, add to all locale files.
+8 locales in `i18n/locales/`. Flat nested objects. Add new strings to **all** locale files.
 
-### SCSS Styling
+### SCSS
 
-- Global variables: `packages/client/src/styles/variables.scss` — `@use '@/styles/variables' as *`
-- Theme: "Pure Ink" (monochrome black/white/gray), no color accent
+- "Pure Ink" theme (monochrome), no color accent
 - Mobile breakpoint: `$breakpoint-mobile: 768px`
-- Component styles always `<style scoped lang="scss">`
-
-### Router
-
-Hash-based routing (`createWebHashHistory`). Auth guard in `router.beforeEach` redirects unauthenticated users to `/` (login). Public routes use `meta: { public: true }`.
+- Always `<style scoped lang="scss">`
 
 ---
 
-## Backend Conventions
+## Hermes Backend Conventions
 
-### Architecture: Routes + Controllers + Services
+### Routes + Controllers + Services
 
-- **Routes** (`routes/`) — thin URL-to-handler mappings, delegate to controllers
-- **Controllers** (`controllers/`) — request handling logic
-- **Services** (`services/`) — reusable business logic, CLI wrappers, utilities
-- **DB stores** (`db/`) — SQLite CRUD functions used by controllers
+- **Routes** (`routes/`) — thin URL-to-handler, delegate to controllers
+- **Controllers** (`controllers/`) — request handling
+- **Services** (`services/`) — reusable logic, Hermes CLI wrappers
+- **DB stores** (`db/`) — SQLite CRUD
 
-### @koa/router v15 Syntax
+### @koa/router v15 (path-to-regexp v8)
 
-Uses path-to-regexp v8:
-- Parameters: `:id` (single segment) or `{*path}` (wildcard, matches `/`)
-- No regex groups `(.*)` — use `{*name}` instead
-- No modifiers `:id+` or `:id*` — use `{*name}`
+- `:id` for single segment, `{*path}` for wildcard
+- No regex groups `(.*)`, no modifiers `:id+`/`:id*`
 
 ### Reverse Proxy
 
-Unmatched `/api/hermes/*` and `/v1/*` requests → upstream Hermes gateway (`http://127.0.0.1:8642`). Path rewriting in `proxy-handler.ts`:
+`/api/hermes/*` → upstream gateway (`http://127.0.0.1:8642`). Rewrites in `proxy-handler.ts`:
 - `/api/hermes/v1/*` → `/v1/*`
 - `/api/hermes/*` → `/api/*`
 
-### Hermes CLI Wrapper (`services/hermes/hermes-cli.ts`)
+---
 
-All Hermes interactions go through `child_process.execFile('hermes', [...args])`. Each function wraps a CLI subcommand.
+## HR Backend Conventions (Python/FastAPI)
 
-### Auth (`services/auth.ts`)
+### Layered Pattern
 
-- Token: `~/.hermes-web-ui/.token` (auto-generated) or `AUTH_TOKEN` env var
-- Disabled when `AUTH_DISABLED=1`
-- Accepts `Authorization: Bearer <token>` header or `?token=<token>` query param
+Router → Service → Model. Schemas for request/response validation.
+
+### Configuration
+
+Pydantic Settings via `app/config.py`. All config from env vars or `.env` file. Key env vars in `packages/api/.env.example`.
+
+### Database
+
+SQLAlchemy async engine + session factory in `app/dependencies.py`. Auto `create_all` on startup. Alembic for migrations.
 
 ---
 
-## Build System
+## Build System (Hermes)
 
-- **Vite** builds the frontend: root `packages/client`, output `dist/client`
-- **esbuild** bundles the server: `scripts/build-server.mjs`, output `dist/server`
-- **tsc** type-checks: `vue-tsc -b` (client) + `tsc --noEmit -p packages/server/tsconfig.json` (server)
+- **Vite** frontend: root `packages/client`, output `dist/client`
+- **esbuild** server: `scripts/build-server.mjs`, output `dist/server`
+- **tsc** type-check: `vue-tsc -b` (client) + `tsc --noEmit` (server)
 - Path alias: `@` → `packages/client/src`
-- Chunk splitting: monaco-editor, mermaid, xterm, vue-vendor, ui-vendor separated
 
 ---
 
 ## Testing
 
-Tests use **Vitest** with `@vue/test-utils` + `@pinia/testing` (frontend) and `vitest` (backend):
+### Hermes (Vitest)
 
 ```bash
-npm run test          # Run all tests once
-npm run test:watch    # Watch mode
-npm run test:coverage # With coverage
-npx vitest run tests/server/sessions-db.test.ts  # Single test file
+npm run test          # All tests
+npx vitest run tests/server/sessions-db.test.ts  # Single file
 ```
 
-Test files in `tests/client/`, `tests/server/`, `tests/shared/`. Config in root `vitest.config.ts`.
+Test files in `tests/client/`, `tests/server/`, `tests/shared/`.
+
+### HR (pytest)
+
+```bash
+cd packages/api && pytest
+```
 
 ---
 
 ## Environment Variables
 
+### Hermes (Koa)
+
 | Variable | Description |
 |---|---|
-| `AUTH_DISABLED` | Set to `1` or `true` to disable auth |
-| `AUTH_TOKEN` | Custom auth token (overrides auto-generated) |
-| `PORT` | Server listen port (default `8648`) |
+| `AUTH_DISABLED` | `1` to disable auth |
+| `AUTH_TOKEN` | Custom token |
+| `PORT` | Koa port (default `8648`) |
 | `UPSTREAM` | Hermes gateway URL (default `http://127.0.0.1:8642`) |
-| `UPLOAD_DIR` | Custom upload directory path |
-| `CORS_ORIGINS` | CORS origin config (default `*`) |
-| `HERMES_BIN` | Custom path to hermes CLI binary |
-| `PROFILE` | Active profile name (default `default`) |
+| `PROFILE` | Active profile (default `default`) |
+
+### HR (FastAPI)
+
+See `packages/api/.env.example`. Key vars: `DATABASE_URL`, `REDIS_URL`, `MINIO_*`, `JWT_SECRET_KEY`, `HERMES_AGENT_URL`.
 
 ---
 
 ## Common Tasks
 
+### Add a new HR page
+
+1. Create view in `packages/client/src/views/hr/MyView.vue`
+2. Add route in `router/index.ts` under the HR children array — name `hr.myPage`, path `my-page`
+3. Add sidebar entry in the HR layout or AppSidebar
+4. Add i18n keys to all locale files
+
+### Add a new HR API endpoint
+
+1. Add SQLAlchemy model in `packages/api/app/models/`
+2. Add Pydantic schemas in `packages/api/app/schemas/`
+3. Add service in `packages/api/app/services/`
+4. Add router in `packages/api/app/routers/`
+5. Register router in `packages/api/app/main.py`
+6. Add frontend API functions in `packages/client/src/api/hr/`
+
 ### Add a new Hermes page
 
 1. Create view in `packages/client/src/views/hermes/MyView.vue`
-2. Add route in `packages/client/src/router/index.ts` — name `hermes.myPage`, path `/hermes/my-page`
-3. Add sidebar entry in `packages/client/src/components/layout/AppSidebar.vue`
-4. Add i18n keys to all locale files in `packages/client/src/i18n/locales/`
+2. Add route with name `hermes.myPage`, path `/hermes/my-page`
+3. Register in `routes/index.ts` **before** `proxyRoutes`
+4. Add controller → route → service layers as needed
 
-### Add a new Hermes API endpoint
+### Add a new agent/module
 
-1. Add controller in `packages/server/src/controllers/hermes/`
-2. Add route in `packages/server/src/routes/hermes/` (thin wrapper)
-3. Register in `packages/server/src/routes/index.ts` **before** `proxyRoutes`
-4. If it needs SQLite, add schema in `db/hermes/schemas.ts` and store module in `db/hermes/`
-5. If it calls Hermes CLI, add wrapper in `services/hermes/hermes-cli.ts`
-6. Add frontend API function in `packages/client/src/api/hermes/`
+Follow the `hr/` namespacing pattern: create `api/{module}/`, `components/{module}/`, `views/{module}/`, `stores/{module}/` with corresponding backend.
 
-### Add a new Hermes Pinia store
+---
 
-1. Create `packages/client/src/stores/hermes/myFeature.ts` using setup syntax
-2. Export `useMyFeatureStore`
+## Documentation
 
-### Add a new agent integration
-
-1. Create `api/{agent}/`, `components/{agent}/`, `views/{agent}/`, `stores/{agent}/`
-2. Create `controllers/{agent}/`, `routes/{agent}/`, `services/{agent}/`
-3. Add routes with `path: '/{agent}/*'`, `name: '{agent}.*'`
-4. Register routes in `routes/index.ts` following public → auth → protected order
+- `docs/` — Architecture, API specs, feature docs, audit reports, test strategy
+- `prd/` — Product requirements (HireMind-PRD-V3.5.md, V3.6.md) and audit reports
+- `docs/README.md` — Documentation index

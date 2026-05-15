@@ -8,22 +8,21 @@ export interface Candidate {
   name: string
   email: string
   phone: string | null
-  source: 'resume_upload' | 'referral' | 'linkedin' | 'website' | 'headhunting' | 'other'
-  status: 'new' | 'screening' | 'interviewing' | 'offered' | 'hired' | 'rejected' | 'withdrawn'
   position_id: string | null
-  position_title?: string
-  resume_id: string | null
-  avatar_url: string | null
-  tags: string[]
-  match_score: number | null
+  stage: 'applied' | 'screened' | 'interviewed' | 'offered' | 'hired' | 'rejected'
+  status: 'active' | 'inactive'
+  source: 'resume_upload' | 'referral' | 'linkedin' | 'website' | 'headhunting' | 'other'
   current_company: string | null
   current_title: string | null
   years_of_experience: number | null
   education: string | null
+  location: string | null
   expected_salary: number | null
-  notes: string
-  ai_summary: string | null
-  ai_tags: string[]
+  skills: string[]
+  summary: string | null
+  applied_at: string | null
+  assigned_recruiter: string | null
+  tags: string[]
   created_at: string
   updated_at: string
 }
@@ -34,14 +33,14 @@ export interface CreateCandidateRequest {
   phone?: string
   source?: Candidate['source']
   position_id?: string
-  resume_id?: string
+  location?: string
+  source_detail?: string
   tags?: string[]
   current_company?: string
   current_title?: string
   years_of_experience?: number
   education?: string
   expected_salary?: number
-  notes?: string
 }
 
 export interface UpdateCandidateRequest {
@@ -50,25 +49,25 @@ export interface UpdateCandidateRequest {
   phone?: string | null
   source?: Candidate['source']
   status?: Candidate['status']
+  stage?: Candidate['stage']
   position_id?: string | null
   tags?: string[]
   current_company?: string | null
   current_title?: string | null
   years_of_experience?: number | null
   education?: string | null
+  location?: string | null
   expected_salary?: number | null
-  notes?: string
 }
 
 export interface CandidateListParams {
   page?: number
   page_size?: number
   status?: Candidate['status']
+  stage?: Candidate['stage']
   position_id?: string
   source?: Candidate['source']
   keyword?: string
-  tags?: string[]
-  min_match_score?: number
 }
 
 // ─── API Functions ──────────────────────────────────────
@@ -93,20 +92,15 @@ export async function deleteCandidate(id: string): Promise<{ ok: boolean }> {
   return hrDelete('/candidates/' + id)
 }
 
-export async function getCandidateTimeline(id: string): Promise<CandidateTimelineEvent[]> {
-  return hrGet<CandidateTimelineEvent[]>(`/candidates/${id}/timeline`)
+export async function advanceStage(id: string, stage: string): Promise<Candidate> {
+  return hrPost<Candidate>(`/candidates/${id}/stage`, { stage })
 }
 
-export async function addCandidateNote(id: string, note: string): Promise<{ ok: boolean }> {
-  return hrPost<{ ok: boolean }>(`/candidates/${id}/notes`, { note })
-}
-
-export interface CandidateTimelineEvent {
-  id: string
-  candidate_id: string
-  event_type: 'status_change' | 'note' | 'interview' | 'offer' | 'resume_upload' | 'ai_analysis'
-  title: string
-  description: string
-  performed_by: string
-  created_at: string
-}
+// TODO: backend not yet implemented
+// export async function getCandidateTimeline(id: string): Promise<CandidateTimelineEvent[]> {
+//   return hrGet<CandidateTimelineEvent[]>(`/candidates/${id}/timeline`)
+// }
+//
+// export async function addCandidateNote(id: string, note: string): Promise<{ ok: boolean }> {
+//   return hrPost<{ ok: boolean }>(`/candidates/${id}/notes`, { note })
+// }

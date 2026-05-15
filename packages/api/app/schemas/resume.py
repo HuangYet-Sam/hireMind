@@ -46,3 +46,4 @@ class ResumeListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    pages: int

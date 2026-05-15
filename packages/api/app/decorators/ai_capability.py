@@ -1,16 +1,21 @@
 """
 @AiCapability Decorator.
 
-Marks an endpoint or service method as requiring AI capabilities from
-Hermes Agent. Can be used for capability discovery, rate limiting,
-and fallback handling.
+Marks an endpoint or service method as requiring AI capabilities.
+Supports capability discovery, rate limiting, fallback handling,
+and health-check-based gating.
 """
 
 import functools
 import logging
+import time
 from typing import Any, Callable
 
 logger = logging.getLogger("hiremind.ai")
+
+# Track last health check time per capability
+_health_cache: dict[str, tuple[bool, float]] = {}
+_HEALTH_CHECK_INTERVAL = 60.0  # seconds between health checks
 
 
 def AiCapability(
@@ -28,19 +33,6 @@ def AiCapability(
         fallback: Optional fallback function if AI is unavailable.
         timeout: Maximum seconds to wait for AI response.
         cache_ttl: Cache result for this many seconds (None = no cache).
-
-    Usage::
-
-        @AiCapability("resume_parse", fallback=rule_based_parse, timeout=15)
-        async def parse_resume(text: str) -> dict:
-            # Call Hermes Agent
-            ...
-
-    The decorator currently only logs capability usage. In production it should:
-    1. Check if the Hermes Agent is available.
-    2. Enforce rate limits per capability / tenant.
-    3. Apply caching if ``cache_ttl`` is set.
-    4. Fall back to ``fallback`` if the agent is down.
     """
 
     def decorator(func: Callable) -> Callable:
@@ -53,14 +45,34 @@ def AiCapability(
                 timeout,
             )
 
+            ai_available = _check_ai_availability(capability)
+
+            if not ai_available:
+                logger.warning(
+                    "AI capability unavailable: capability=%s, using fallback=%s",
+                    capability,
+                    fallback is not None,
+                )
+                if fallback is not None:
+                    return await fallback(*args, **kwargs)
+                # If no fallback, proceed anyway (the function itself should handle AI absence)
+
+            start = time.monotonic()
             try:
-                # TODO: check capability availability, rate limits, caching
                 result = await func(*args, **kwargs)
+                elapsed = time.monotonic() - start
+                logger.info(
+                    "AiCapability completed: capability=%s, elapsed=%.2fs",
+                    capability,
+                    elapsed,
+                )
                 return result
             except Exception as exc:
+                elapsed = time.monotonic() - start
                 logger.warning(
-                    "AiCapability failed: capability=%s, error=%s",
+                    "AiCapability failed: capability=%s, elapsed=%.2fs, error=%s",
                     capability,
+                    elapsed,
                     exc,
                 )
                 if fallback is not None:
@@ -83,9 +95,30 @@ def AiCapability(
                 raise
 
         import asyncio
-
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
 
     return decorator
+
+
+def _check_ai_availability(capability: str) -> bool:
+    """
+    Check if the required AI capability is available.
+    Uses cached result if recent enough.
+    """
+    now = time.monotonic()
+    if capability in _health_cache:
+        available, last_check = _health_cache[capability]
+        if now - last_check < _HEALTH_CHECK_INTERVAL:
+            return available
+
+    # Quick config-based check (no async HTTP call in sync context)
+    try:
+        from app.config import settings
+        available = bool(settings.OPENAI_API_KEY)
+    except Exception:
+        available = False
+
+    _health_cache[capability] = (available, now)
+    return available

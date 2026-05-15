@@ -4,6 +4,7 @@ Interview Router.
 Endpoints for scheduling and managing interviews (面试).
 """
 
+import math
 from datetime import datetime
 
 from uuid import UUID
@@ -13,10 +14,12 @@ from fastapi import APIRouter, HTTPException, Query, status
 from app.dependencies import CurrentUserDep, DbSession, PaginationDep
 from app.schemas.interview import (
     InterviewCreate,
+    InterviewFeedbackCreate,
     InterviewListResponse,
     InterviewResponse,
     InterviewUpdate,
 )
+from app.services.interview_service import InterviewService
 
 router = APIRouter()
 
@@ -32,12 +35,24 @@ async def list_interviews(
     date_from: datetime | None = Query(None),
     date_to: datetime | None = Query(None),
 ):
-    """Return a paginated list of interviews with optional filters."""
+    service = InterviewService(db)
+    items, total = await service.list_interviews(
+        tenant_id=current_user.tenant_id,
+        candidate_id=candidate_id,
+        position_id=position_id,
+        interviewer_id=interviewer_id,
+        date_from=date_from,
+        date_to=date_to,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
+    pages = math.ceil(total / pagination.page_size) if total > 0 else 0
     return InterviewListResponse(
-        items=[],
-        total=0,
+        items=items,
+        total=total,
         page=pagination.page,
         page_size=pagination.page_size,
+        pages=pages,
     )
 
 
@@ -52,8 +67,18 @@ async def create_interview(
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Schedule a new interview."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = InterviewService(db)
+    try:
+        interview = await service.create(
+            data=payload,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        )
+    return interview
 
 
 @router.get("/{interview_id}", response_model=InterviewResponse, summary="Get interview")
@@ -62,19 +87,39 @@ async def get_interview(
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Retrieve a single interview by ID."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = InterviewService(db)
+    interview = await service.get_by_id(interview_id, current_user.tenant_id)
+    if interview is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found"
+        )
+    return interview
 
 
-@router.put("/{interview_id}", response_model=InterviewResponse, summary="Update interview")
+@router.patch("/{interview_id}", response_model=InterviewResponse, summary="Update interview")
 async def update_interview(
     interview_id: UUID,
     payload: InterviewUpdate,
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Update interview details (reschedule, change interviewer, add feedback)."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = InterviewService(db)
+    try:
+        interview = await service.update(
+            interview_id=interview_id,
+            data=payload,
+            tenant_id=current_user.tenant_id,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=msg
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=msg
+        )
+    return interview
 
 
 @router.delete(
@@ -86,9 +131,24 @@ async def cancel_interview(
     interview_id: UUID,
     db: DbSession,
     current_user: CurrentUserDep,
+    reason: str | None = Query(None, description="Cancellation reason"),
 ):
-    """Cancel an interview."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = InterviewService(db)
+    try:
+        await service.cancel(
+            interview_id=interview_id,
+            tenant_id=current_user.tenant_id,
+            reason=reason,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=msg
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=msg
+        )
 
 
 @router.post(
@@ -98,9 +158,25 @@ async def cancel_interview(
 )
 async def submit_feedback(
     interview_id: UUID,
-    payload: InterviewUpdate,
+    payload: InterviewFeedbackCreate,
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Submit interviewer feedback and score for a completed interview."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = InterviewService(db)
+    try:
+        interview = await service.submit_feedback(
+            interview_id=interview_id,
+            interviewer_id=current_user.user_id,
+            data=payload,
+            tenant_id=current_user.tenant_id,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=msg
+            )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=msg
+        )
+    return interview

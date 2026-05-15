@@ -53,10 +53,12 @@ export const useInterviewStore = defineStore('hr-interviews', () => {
     return interview
   }
 
-  async function cancelInterview(id: string) {
-    const interview = await interviewsApi.cancelInterview(id)
+  async function cancelInterview(id: string, reason?: string) {
+    await interviewsApi.cancelInterview(id, reason)
     const idx = interviews.value.findIndex(i => i.id === id)
-    if (idx !== -1) interviews.value[idx] = interview
+    if (idx !== -1) {
+      interviews.value[idx] = { ...interviews.value[idx], status: 'cancelled' }
+    }
   }
 
   return {

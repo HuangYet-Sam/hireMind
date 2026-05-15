@@ -6,63 +6,48 @@ import type { PaginatedResponse } from './client'
 export interface Interview {
   id: string
   candidate_id: string
-  candidate_name?: string
   position_id: string
-  position_title?: string
-  round: number
-  type: 'phone_screen' | 'technical' | 'behavioral' | 'case_study' | 'panel' | 'final'
+  round_number: number
+  interview_type: 'phone_screen' | 'technical' | 'behavioral' | 'case_study' | 'panel' | 'final'
   status: 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show'
   scheduled_at: string
   duration_minutes: number
   location: string
-  meeting_url: string | null
-  interviewers: Interviewer[]
-  feedback: InterviewFeedback | null
-  score: number | null
-  ai_summary: string | null
-  notes: string
+  interviewer_ids: string[]
+  overall_score: number | null
+  recommendation: string | null
+  summary: string | null
+  completed_at: string | null
   created_at: string
   updated_at: string
-}
-
-export interface Interviewer {
-  user_id: string
-  name: string
-  role: 'lead' | 'panelist' | 'observer'
-}
-
-export interface InterviewFeedback {
-  interviewer_id: string
-  interviewer_name: string
-  rating: number
-  strengths: string[]
-  concerns: string[]
-  recommendation: 'strong_yes' | 'yes' | 'neutral' | 'no' | 'strong_no'
-  comment: string
-  submitted_at: string
 }
 
 export interface CreateInterviewRequest {
   candidate_id: string
   position_id: string
-  round?: number
-  type: Interview['type']
+  round_number?: number
+  interview_type: Interview['interview_type']
   scheduled_at: string
   duration_minutes?: number
   location?: string
-  meeting_url?: string
   interviewer_ids: string[]
-  notes?: string
 }
 
 export interface UpdateInterviewRequest {
   scheduled_at?: string
   duration_minutes?: number
   location?: string
-  meeting_url?: string | null
   status?: Interview['status']
   interviewer_ids?: string[]
-  notes?: string
+}
+
+export interface SubmitFeedbackRequest {
+  score: number
+  recommendation: string
+  strengths?: string
+  weaknesses?: string
+  comments?: string
+  skill_ratings?: Record<string, number>
 }
 
 export interface InterviewListParams {
@@ -71,7 +56,7 @@ export interface InterviewListParams {
   status?: Interview['status']
   candidate_id?: string
   position_id?: string
-  type?: Interview['type']
+  interview_type?: Interview['interview_type']
   date_from?: string
   date_to?: string
 }
@@ -94,14 +79,16 @@ export async function updateInterview(id: string, data: UpdateInterviewRequest):
   return hrPatch<Interview>(`/interviews/${id}`, data)
 }
 
-export async function cancelInterview(id: string): Promise<Interview> {
-  return hrPost<Interview>(`/interviews/${id}/cancel`)
+export async function cancelInterview(id: string, reason?: string): Promise<void> {
+  const params = reason ? `?reason=${encodeURIComponent(reason)}` : ''
+  return hrDelete(`/interviews/${id}${params}`)
 }
 
-export async function submitFeedback(id: string, feedback: Omit<InterviewFeedback, 'submitted_at'>): Promise<{ ok: boolean }> {
-  return hrPost<{ ok: boolean }>(`/interviews/${id}/feedback`, feedback)
+export async function submitFeedback(id: string, feedback: SubmitFeedbackRequest): Promise<Interview> {
+  return hrPost<Interview>(`/interviews/${id}/feedback`, feedback)
 }
 
+// TODO: backend not yet implemented
 export async function getInterviewCalendar(startDate: string, endDate: string): Promise<Interview[]> {
   return hrGet<Interview[]>('/interviews/calendar', { date_from: startDate, date_to: endDate })
 }

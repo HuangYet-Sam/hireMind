@@ -1,12 +1,13 @@
 """
 Resume Router.
 
-Endpoints for uploading, parsing, and managing candidate resumes (简历).
+Endpoints for uploading, parsing, and managing candidate resumes.
 """
 
+import math
 from uuid import UUID
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, status
 
 from app.dependencies import CurrentUserDep, DbSession, PaginationDep
 from app.schemas.resume import (
@@ -14,6 +15,7 @@ from app.schemas.resume import (
     ResumeParseResult,
     ResumeResponse,
 )
+from app.services.resume_service import ResumeService
 
 router = APIRouter()
 
@@ -27,11 +29,21 @@ async def list_resumes(
     status: str | None = Query(None, description="Filter by parse status"),
 ):
     """Return a paginated list of uploaded resumes."""
+    service = ResumeService(db)
+    resumes, total = await service.list_resumes(
+        tenant_id=current_user.tenant_id,
+        candidate_id=candidate_id,
+        status=status,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
+    pages = math.ceil(total / pagination.page_size) if total > 0 else 0
     return ResumeListResponse(
-        items=[],
-        total=0,
+        items=resumes,
+        total=total,
         page=pagination.page,
         page_size=pagination.page_size,
+        pages=pages,
     )
 
 
@@ -42,14 +54,45 @@ async def list_resumes(
     summary="Upload resume",
 )
 async def upload_resume(
+    db: DbSession,
+    current_user: CurrentUserDep,
     file: UploadFile = File(..., description="Resume file (PDF/DOCX)"),
-    candidate_id: UUID | None = None,
-    db: DbSession = None,
-    current_user: CurrentUserDep = None,
+    candidate_id: UUID | None = Form(None),
+    position_id: UUID | None = Form(None),
+    source: str = Form("upload"),
 ):
-    """Upload a resume file (PDF/DOCX), store in MinIO, and trigger AI parsing."""
-    # TODO: delegate to resume_service.upload_and_parse(...)
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    """Upload a resume file and create a pending parse record."""
+    content = await file.read()
+    service = ResumeService(db)
+    try:
+        resume = await service.upload(
+            filename=file.filename,
+            content=content,
+            content_type=file.content_type,
+            candidate_id=candidate_id,
+            position_id=position_id,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+        )
+    except ValueError as e:
+        if "Duplicate file" in str(e):
+            raise HTTPException(status_code=409, detail=str(e))
+        raise
+    return resume
+
+
+@router.get("/{resume_id}", response_model=ResumeResponse, summary="Get resume")
+async def get_resume(
+    resume_id: UUID,
+    db: DbSession,
+    current_user: CurrentUserDep,
+):
+    """Retrieve a single resume by ID."""
+    service = ResumeService(db)
+    resume = await service.get_by_id(resume_id, current_user.tenant_id)
+    if resume is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return resume
 
 
 @router.post(
@@ -63,17 +106,14 @@ async def parse_resume(
     current_user: CurrentUserDep,
 ):
     """Trigger AI-powered resume parsing (or re-parse)."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
-
-
-@router.get("/{resume_id}", response_model=ResumeResponse, summary="Get resume")
-async def get_resume(
-    resume_id: UUID,
-    db: DbSession,
-    current_user: CurrentUserDep,
-):
-    """Retrieve a single resume by ID."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = ResumeService(db)
+    try:
+        result = await service.parse(resume_id, current_user.tenant_id)
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail="Resume not found")
+        raise
+    return result
 
 
 @router.delete(
@@ -87,4 +127,10 @@ async def delete_resume(
     current_user: CurrentUserDep,
 ):
     """Delete a resume and its stored file."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = ResumeService(db)
+    try:
+        await service.delete(resume_id, current_user.tenant_id)
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail="Resume not found")
+        raise

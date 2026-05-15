@@ -6,9 +6,10 @@ Recruitment analytics, dashboards, and reporting endpoints.
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from app.dependencies import CurrentUserDep, DbSession
+from app.services.analytics_service import AnalyticsService
 
 router = APIRouter()
 
@@ -25,8 +26,8 @@ async def get_dashboard(
     Includes: open positions count, candidates in pipeline, interviews this week,
     offers pending, time-to-hire metrics.
     """
-    # TODO: delegate to analytics_service.get_dashboard(...)
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    svc = AnalyticsService(db)
+    return await svc.get_dashboard(current_user.tenant_id, department_id)
 
 
 @router.get("/pipeline", summary="Pipeline funnel")
@@ -36,8 +37,9 @@ async def get_pipeline_funnel(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
 ):
-    """Return the hiring pipeline funnel (applied → screened → interviewed → offered → hired)."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    """Return the hiring pipeline funnel (applied -> screened -> interviewed -> offered -> hired)."""
+    svc = AnalyticsService(db)
+    return await svc.get_pipeline_funnel(current_user.tenant_id, date_from, date_to)
 
 
 @router.get("/time-to-hire", summary="Time-to-hire metrics")
@@ -49,7 +51,8 @@ async def get_time_to_hire(
     group_by: str = Query("month", description="Group by: day/week/month"),
 ):
     """Return average time-to-hire metrics grouped by period."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    svc = AnalyticsService(db)
+    return await svc.get_time_to_hire(current_user.tenant_id, date_from, date_to, group_by)
 
 
 @router.get("/source-effectiveness", summary="Source effectiveness")
@@ -58,7 +61,8 @@ async def get_source_effectiveness(
     current_user: CurrentUserDep,
 ):
     """Return candidate source effectiveness comparison (referral, job board, social, etc.)."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    svc = AnalyticsService(db)
+    return await svc.get_source_effectiveness(current_user.tenant_id)
 
 
 @router.get("/department-summary", summary="Department summary")
@@ -67,4 +71,5 @@ async def get_department_summary(
     current_user: CurrentUserDep,
 ):
     """Return per-department recruitment metrics."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    svc = AnalyticsService(db)
+    return await svc.get_department_summary(current_user.tenant_id)

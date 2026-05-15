@@ -28,10 +28,10 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "hiremind"
-    POSTGRES_PASSWORD: str = "hiremind_secret"
+    POSTGRES_PASSWORD: str = "hiremind_dev"
     POSTGRES_DB: str = "hiremind"
     DATABASE_URL: PostgresDsn = Field(
-        default="postgresql+asyncpg://hiremind:hiremind_secret@localhost:5432/hiremind",
+        default="postgresql+asyncpg://hiremind:hiremind_dev@localhost:5432/hiremind",
         description="Async PostgreSQL connection string",
     )
     DB_POOL_SIZE: int = 20
@@ -59,6 +59,15 @@ class Settings(BaseSettings):
     # ── Hermes Agent Integration ─────────────────────────────
     HERMES_AGENT_URL: str = "http://localhost:8648"
     HERMES_AGENT_API_KEY: str = ""
+
+    # ── File Upload ───────────────────────────────────────────
+    UPLOAD_DIR: str = "uploads"
+    MAX_UPLOAD_SIZE_MB: int = 20
+
+    # ── OpenAI / LLM ─────────────────────────────────────────
+    OPENAI_API_KEY: str = ""
+    OPENAI_API_BASE: str = "https://api.openai.com/v1"
+    OPENAI_MODEL_RESUME: str = "gpt-4o-mini"
 
     # ── CORS ─────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = Field(

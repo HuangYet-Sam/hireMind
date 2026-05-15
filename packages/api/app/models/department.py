@@ -1,51 +1,62 @@
 """
 Department Model (部门).
 
-Represents organizational departments in the company hierarchy.
+Organizational hierarchy tree. Aligned to DDL §7.7a.
 """
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, PrimaryKeyMixin, TenantMixin, TimestampMixin
+from app.models.base import Base, PrimaryKeyMixin, TimestampMixin
 
 
-class Department(Base, PrimaryKeyMixin, TimestampMixin, TenantMixin):
+class Department(Base, PrimaryKeyMixin, TimestampMixin):
     """Department / organizational unit model."""
 
     __tablename__ = "departments"
 
-    name: Mapped[str] = mapped_column(String(255), nullable=False, comment="Department name")
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, unique=True, comment="Department code (e.g. ENG, HR, MKT)"
+        String(50), nullable=True, comment="Department code, e.g. ENG, HR"
     )
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("departments.id", ondelete="SET NULL"),
+        ForeignKey("departments.id"),
         nullable=True,
-        comment="Parent department ID (for hierarchy)",
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     head_user_id: Mapped[str | None] = mapped_column(
         String(64), nullable=True, comment="Department head user ID"
     )
-    headcount_limit: Mapped[int | None] = mapped_column(
-        Integer, nullable=True, comment="Maximum headcount"
+    headcount_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tree_path: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, comment="Materialized path, e.g. 'tech.backend'"
     )
-    current_headcount: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, comment="Current headcount"
-    )
+    manager_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     status: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="active", comment="active / archived"
+        String(20), nullable=False, default="active"
     )
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, comment="Display order")
+    tenant_id: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        index=True,
+    )
 
-    # Relationships
-    parent = relationship("Department", remote_side="Department.id", backref="children", lazy="selectin")
+    parent = relationship(
+        "Department", remote_side="Department.id", backref="children", lazy="selectin"
+    )
     positions = relationship("Position", back_populates="department", lazy="selectin")
+
+    @property
+    def current_headcount(self) -> int:
+        try:
+            return len(self.positions) if self.positions else 0
+        except Exception:
+            return 0
 
     def __repr__(self) -> str:
         return f"<Department {self.name}>"

@@ -1,6 +1,11 @@
 """
 Department Pydantic Schemas.
+
+Request / response models for Department CRUD and tree endpoints.
+Aligned to DDL §7.2.1 (M1 module).
 """
+
+from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
@@ -34,7 +39,7 @@ class DepartmentUpdate(BaseModel):
 
 
 class DepartmentResponse(BaseModel):
-    """Department response schema."""
+    """Department response schema (flat, includes DDL fields)."""
 
     id: UUID
     name: str
@@ -46,6 +51,8 @@ class DepartmentResponse(BaseModel):
     current_headcount: int
     status: str
     sort_order: int
+    tree_path: str | None = Field(None, description="Materialized path, e.g. 'tech.backend'")
+    manager_name: str | None = Field(None, description="Department manager display name")
     created_at: datetime
     updated_at: datetime
 
@@ -57,3 +64,34 @@ class DepartmentListResponse(BaseModel):
 
     items: list[DepartmentResponse]
     total: int
+    page: int
+    page_size: int
+    pages: int
+
+
+class DepartmentTreeNode(BaseModel):
+    """Recursive tree node for a single department with its children."""
+
+    id: UUID
+    name: str
+    code: str | None
+    parent_id: UUID | None
+    description: str | None
+    head_user_id: str | None
+    headcount_limit: int | None
+    current_headcount: int
+    status: str
+    sort_order: int
+    tree_path: str | None
+    manager_name: str | None
+    created_at: datetime
+    updated_at: datetime
+    children: list[DepartmentTreeNode] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class DepartmentTreeResponse(BaseModel):
+    """Response wrapper containing the department tree."""
+
+    tree: list[DepartmentTreeNode]

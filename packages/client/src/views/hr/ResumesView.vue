@@ -26,14 +26,14 @@ const parseColorMap: Record<string, string> = {
 
 const columns: DataTableColumns<Resume> = [
   { title: '文件名', key: 'filename', ellipsis: { tooltip: true } },
-  { title: '候选人', key: 'candidate_name', width: 120 },
+  { title: '候选人ID', key: 'candidate_id', width: 120 },
   {
     title: '解析状态',
     key: 'parse_status',
     width: 100,
     render: (row) => h(NTag, { size: 'small', type: parseColorMap[row.parse_status] as any }, () => row.parse_status),
   },
-  { title: 'AI标签', key: 'ai_tags', width: 200, render: (row) => h(NSpace, { size: 4 }, () => row.ai_tags.slice(0, 3).map(t => h(NTag, { size: 'small' }, () => t))) },
+  { title: 'AI标签', key: 'tags', width: 200, render: (row) => h(NSpace, { size: 4 }, () => row.tags.slice(0, 3).map(t => h(NTag, { size: 'small' }, () => t))) },
   { title: '来源', key: 'source', width: 90 },
   { title: '上传时间', key: 'created_at', width: 120 },
   {

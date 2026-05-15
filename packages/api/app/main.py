@@ -6,7 +6,6 @@ Launch with: uvicorn app.main:app --reload  (from packages/api/)
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,6 +40,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
 
         await conn.run_sync(Base.metadata.create_all)
 
+    # Seed default tenant + user
+    from app.dependencies import AsyncSessionLocal
+
+    async with AsyncSessionLocal() as session:
+        from sqlalchemy import select
+        from app.models.tenant import Tenant
+        from app.models.user import User
+
+        result = await session.execute(
+            select(Tenant).where(Tenant.name == "默认租户")
+        )
+        if not result.scalar_one_or_none():
+            tenant = Tenant(name="默认租户", plan="pro", status="active")
+            session.add(tenant)
+            await session.flush()
+
+            user = User(
+                tenant_id=tenant.id,
+                email="admin@hiremind.local",
+                name_encrypted="Admin",
+                role="hr_admin",
+            )
+            session.add(user)
+            await session.commit()
+            logger.info("🌱 Seeded default tenant and admin user.")
+
     logger.info("✅ Database ready.")
     logger.info("🌐 CORS allowed origins: %s", settings.CORS_ORIGINS)
 
@@ -68,8 +93,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Tenant-Id", "X-API-Key"],
 )
 
 # ── Custom Middleware (order matters: outermost first) ─────────
@@ -92,7 +117,13 @@ app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytic
 app.include_router(departments.router, prefix="/api/v1/departments", tags=["Departments"])
 
 
-# ── Health Check ───────────────────────────────────────────────
+# ── Root & Health Check ────────────────────────────────────────
+@app.get("/", tags=["System"])
+async def root():
+    """Root endpoint returning API info."""
+    return {"service": "hiremind-api", "version": "0.1.0"}
+
+
 @app.get("/health", tags=["System"])
 async def health_check():
     """Basic health check endpoint."""

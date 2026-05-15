@@ -84,3 +84,4 @@ class OfferListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    pages: int

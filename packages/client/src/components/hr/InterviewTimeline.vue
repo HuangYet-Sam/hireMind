@@ -27,14 +27,14 @@ function formatDate(dateStr: string): string {
       <div v-if="idx < interviews.length - 1" class="timeline-line" />
       <div class="timeline-content">
         <div class="timeline-header">
-          <span class="round">第{{ item.round }}轮 · {{ item.type }}</span>
+          <span class="round">第{{ item.round_number }}轮 · {{ item.interview_type }}</span>
           <span class="date">{{ formatDate(item.scheduled_at) }}</span>
         </div>
         <div class="timeline-body">
-          <span>{{ item.candidate_name }} — {{ item.position_title }}</span>
-          <span v-if="item.score !== null" class="score">评分: {{ item.score }}/10</span>
+          <span>{{ item.candidate_id }} — {{ item.position_id }}</span>
+          <span v-if="item.overall_score !== null" class="score">评分: {{ item.overall_score }}/10</span>
         </div>
-        <div v-if="item.ai_summary" class="ai-note">{{ item.ai_summary }}</div>
+        <div v-if="item.summary" class="ai-note">{{ item.summary }}</div>
       </div>
     </div>
   </div>

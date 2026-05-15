@@ -1,20 +1,20 @@
 """
 Resume Model (简历).
 
-Stores resume metadata and links to the actual file in MinIO.
+Resume file metadata and AI-parsed data. Aligned to DDL §7.2.2.
 """
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, PrimaryKeyMixin, TenantMixin, TimestampMixin
+from app.models.base import Base, PrimaryKeyMixin, TimestampMixin
 
 
-class Resume(Base, PrimaryKeyMixin, TimestampMixin, TenantMixin):
-    """Resume model — links to a file stored in MinIO."""
+class Resume(Base, PrimaryKeyMixin, TimestampMixin):
+    """Resume model — links to a file and AI-parsed structured data."""
 
     __tablename__ = "resumes"
 
@@ -22,44 +22,70 @@ class Resume(Base, PrimaryKeyMixin, TimestampMixin, TenantMixin):
         UUID(as_uuid=True),
         ForeignKey("candidates.id", ondelete="CASCADE"),
         nullable=True,
-        comment="Linked candidate",
+    )
+    position_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("positions.id"),
+        nullable=True,
+        comment="Applied position"
     )
 
     # File info
-    original_filename: Mapped[str] = mapped_column(String(512), nullable=False, comment="Original file name")
-    file_path: Mapped[str] = mapped_column(String(1024), nullable=False, comment="MinIO object key")
-    file_size: Mapped[int] = mapped_column(Integer, nullable=False, comment="File size in bytes")
-    content_type: Mapped[str] = mapped_column(String(128), nullable=False, comment="MIME type")
+    original_filename: Mapped[str] = mapped_column(
+        String(255), nullable=False, comment="Original file name"
+    )
+    file_path: Mapped[str] = mapped_column(
+        String(500), nullable=False, comment="File storage path"
+    )
+    file_type: Mapped[str | None] = mapped_column(
+        String(10), nullable=True,
+        comment="pdf/docx/doc/png/jpg/jpeg"
+    )
+    file_size: Mapped[int] = mapped_column(Integer, nullable=False, comment="Bytes")
+    content_type: Mapped[str] = mapped_column(
+        String(128), nullable=False, comment="MIME type"
+    )
     file_hash: Mapped[str | None] = mapped_column(
-        String(128), nullable=True, comment="SHA-256 hash for deduplication"
+        String(128), nullable=True, comment="SHA-256 for dedup"
     )
 
-    # Parsing status
+    # Source and upload
+    source: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="upload",
+        comment="upload/email/boss/referral/headhunter"
+    )
+    uploaded_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Parsing
     parse_status: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        default="pending",
-        comment="pending / parsing / completed / failed",
+        String(20), nullable=False, default="pending",
+        comment="pending/processing/completed/failed"
     )
     parsed_at: Mapped[str | None] = mapped_column(
         String(50), nullable=True, comment="Timestamp when parsing completed"
     )
-    parse_error: Mapped[str | None] = mapped_column(Text, nullable=True, comment="Error message if parsing failed")
-
-    # AI-parsed content
+    parse_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     parsed_data: Mapped[dict | None] = mapped_column(
-        JSONB,
-        nullable=True,
-        default=dict,
-        comment="AI-extracted structured resume data",
+        JSONB, nullable=True, default=dict,
+        comment="AI-extracted structured data (immutable audit trail)"
     )
 
-    # Metadata
-    uploaded_by: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="Uploader user ID")
-    language: Mapped[str | None] = mapped_column(
-        String(10), nullable=True, default="zh", comment="Detected language code"
+    # Traceability and credibility
+    source_refs: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True, default=list, comment="Field source annotations"
     )
-    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="Number of pages")
+    credibility: Mapped[dict | None] = mapped_column(
+        JSONB, nullable=True, comment="Credibility check results"
+    )
+
+    # AI metadata
+    embedding_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    language: Mapped[str | None] = mapped_column(String(10), nullable=True, default="zh")
+    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, comment="Optimistic lock version"
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=True, default="default")
 
     # Relationships
     candidate = relationship("Candidate", back_populates="resumes", lazy="selectin")

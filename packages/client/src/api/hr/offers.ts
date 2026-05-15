@@ -6,68 +6,56 @@ import type { PaginatedResponse } from './client'
 export interface Offer {
   id: string
   candidate_id: string
-  candidate_name?: string
-  position_id: string
-  position_title?: string
+  position_id: string | null
   status: 'draft' | 'pending_approval' | 'approved' | 'sent' | 'accepted' | 'rejected' | 'withdrawn' | 'expired'
-  salary: number
-  salary_currency: string
-  bonus: number | null
+  base_salary: number | null
+  annual_bonus_months: number | null
+  sign_on_bonus: number | null
   equity: string | null
-  start_date: string
-  contract_type: 'permanent' | 'contract' | 'intern'
-  contract_duration_months: number | null
-  location: string
   benefits_summary: string | null
-  notes: string
-  approved_by: string | null
-  approved_at: string | null
+  proposed_start_date: string | null
+  probation_months: number | null
+  work_location: string | null
+  employment_type: string | null
+  notes: string | null
+  offer_letter_url: string | null
   sent_at: string | null
   responded_at: string | null
+  response_note: string | null
   expiry_date: string | null
-  approval_chain: ApprovalStep[]
-  ai_risk_assessment: string | null
-  created_by: string
+  created_by: string | null
   created_at: string
   updated_at: string
 }
 
-export interface ApprovalStep {
-  step: number
-  role: string
-  user_id: string | null
-  user_name: string | null
-  status: 'pending' | 'approved' | 'rejected'
-  comment: string | null
-  acted_at: string | null
-}
-
 export interface CreateOfferRequest {
   candidate_id: string
-  position_id: string
-  salary: number
-  salary_currency?: string
-  bonus?: number
+  position_id?: string
+  base_salary?: number
+  annual_bonus_months?: number
+  sign_on_bonus?: number
   equity?: string
-  start_date: string
-  contract_type?: Offer['contract_type']
-  contract_duration_months?: number
-  location?: string
   benefits_summary?: string
+  proposed_start_date?: string
+  probation_months?: number
+  work_location?: string
+  employment_type?: string
   notes?: string
   expiry_date?: string
 }
 
 export interface UpdateOfferRequest {
-  salary?: number
-  bonus?: number | null
+  base_salary?: number | null
+  annual_bonus_months?: number | null
+  sign_on_bonus?: number | null
   equity?: string | null
-  start_date?: string
-  contract_type?: Offer['contract_type']
-  location?: string
   benefits_summary?: string | null
-  notes?: string
-  status?: Offer['status']
+  proposed_start_date?: string | null
+  probation_months?: number | null
+  work_location?: string | null
+  employment_type?: string | null
+  notes?: string | null
+  expiry_date?: string | null
 }
 
 export interface OfferListParams {
@@ -96,14 +84,11 @@ export async function updateOffer(id: string, data: UpdateOfferRequest): Promise
   return hrPatch<Offer>(`/offers/${id}`, data)
 }
 
-export async function submitOfferForApproval(id: string): Promise<Offer> {
-  return hrPost<Offer>(`/offers/${id}/submit`)
-}
-
 export async function approveOffer(id: string, comment?: string): Promise<Offer> {
   return hrPost<Offer>(`/offers/${id}/approve`, { comment })
 }
 
+// TODO: backend not yet implemented
 export async function rejectOffer(id: string, comment?: string): Promise<Offer> {
   return hrPost<Offer>(`/offers/${id}/reject`, { comment })
 }
@@ -112,6 +97,7 @@ export async function sendOffer(id: string): Promise<Offer> {
   return hrPost<Offer>(`/offers/${id}/send`)
 }
 
-export async function withdrawOffer(id: string): Promise<Offer> {
-  return hrPost<Offer>(`/offers/${id}/withdraw`)
+export async function withdrawOffer(id: string, reason?: string): Promise<void> {
+  const params = reason ? `?reason=${encodeURIComponent(reason)}` : ''
+  return hrDelete(`/offers/${id}${params}`)
 }

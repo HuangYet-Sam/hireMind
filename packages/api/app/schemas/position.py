@@ -20,12 +20,12 @@ class PositionCreate(BaseModel):
     employment_type: str = Field("full_time", description="full_time / part_time / contract / internship")
     headcount: int = Field(1, ge=1, description="Number of openings")
     priority: str = Field("normal", description="low / normal / high / urgent")
-    salary_min: int | None = Field(None, description="Minimum monthly salary")
-    salary_max: int | None = Field(None, description="Maximum monthly salary")
+    salary_min: float | None = Field(None, description="Minimum monthly salary")
+    salary_max: float | None = Field(None, description="Maximum monthly salary")
     description: str | None = Field(None, description="Job description")
     requirements: str | None = Field(None, description="Job requirements")
     benefits: str | None = Field(None, description="Benefits")
-    required_skills: list[str] | None = Field(None, description="Required skills")
+    required_skills: list[dict] | None = Field(None, description="Required skills")
     preferred_skills: list[str] | None = Field(None, description="Preferred skills")
     education_requirement: str | None = Field(None, description="Minimum education")
     experience_years_min: int | None = Field(None, description="Min years of experience")
@@ -42,12 +42,12 @@ class PositionUpdate(BaseModel):
     employment_type: str | None = None
     headcount: int | None = Field(None, ge=1)
     priority: str | None = None
-    salary_min: int | None = None
-    salary_max: int | None = None
+    salary_min: float | None = None
+    salary_max: float | None = None
     description: str | None = None
     requirements: str | None = None
     benefits: str | None = None
-    required_skills: list[str] | None = None
+    required_skills: list[dict] | None = None
     preferred_skills: list[str] | None = None
     education_requirement: str | None = None
     experience_years_min: int | None = None
@@ -67,12 +67,12 @@ class PositionResponse(BaseModel):
     status: str
     headcount: int
     priority: str
-    salary_min: int | None
-    salary_max: int | None
+    salary_min: float | None
+    salary_max: float | None
     description: str | None
     requirements: str | None
     benefits: str | None
-    required_skills: list | None
+    required_skills: list[dict] | None
     preferred_skills: list | None
     education_requirement: str | None
     experience_years_min: int | None
@@ -92,3 +92,4 @@ class PositionListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    pages: int

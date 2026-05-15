@@ -51,7 +51,7 @@ class CandidateResponse(BaseModel):
 
     id: UUID
     name: str
-    email: str
+    email: str | None
     phone: str | None
     position_id: UUID | None
     stage: str
@@ -81,3 +81,4 @@ class CandidateListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+    pages: int

@@ -4,6 +4,7 @@ Offer Router.
 Endpoints for creating, approving, and managing job offers (Offer).
 """
 
+import math
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -16,6 +17,7 @@ from app.schemas.offer import (
     OfferResponse,
     OfferUpdate,
 )
+from app.services.offer_service import OfferService
 
 router = APIRouter()
 
@@ -29,12 +31,22 @@ async def list_offers(
     position_id: UUID | None = Query(None),
     status_filter: str | None = Query(None, alias="status", description="draft/sent/accepted/rejected/withdrawn"),
 ):
-    """Return a paginated list of offers."""
+    service = OfferService(db)
+    items, total = await service.list_offers(
+        tenant_id=current_user.tenant_id,
+        candidate_id=candidate_id,
+        position_id=position_id,
+        status=status_filter,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
+    pages = math.ceil(total / pagination.page_size) if total > 0 else 0
     return OfferListResponse(
-        items=[],
-        total=0,
+        items=items,
+        total=total,
         page=pagination.page,
         page_size=pagination.page_size,
+        pages=pages,
     )
 
 
@@ -49,8 +61,16 @@ async def create_offer(
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Create a new offer for a candidate."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = OfferService(db)
+    try:
+        offer = await service.create(
+            data=payload,
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return offer
 
 
 @router.get("/{offer_id}", response_model=OfferResponse, summary="Get offer")
@@ -59,19 +79,39 @@ async def get_offer(
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Retrieve a single offer by ID."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = OfferService(db)
+    offer = await service.get_by_id(offer_id, current_user.tenant_id)
+    if offer is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found"
+        )
+    return offer
 
 
-@router.put("/{offer_id}", response_model=OfferResponse, summary="Update offer")
+@router.patch("/{offer_id}", response_model=OfferResponse, summary="Update offer")
 async def update_offer(
     offer_id: UUID,
     payload: OfferUpdate,
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Update offer details (salary, benefits, etc.)."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = OfferService(db)
+    try:
+        offer = await service.update(
+            offer_id=offer_id,
+            data=payload,
+            tenant_id=current_user.tenant_id,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "draft" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=msg
+            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=msg
+        )
+    return offer
 
 
 @router.post(
@@ -85,8 +125,29 @@ async def approve_offer(
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Approve an offer (multi-level approval workflow)."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = OfferService(db)
+    try:
+        offer = await service.approve(
+            offer_id=offer_id,
+            approver_id=current_user.user_id,
+            approver_name=None,
+            comment=payload.comment,
+            tenant_id=current_user.tenant_id,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "already acted" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=msg
+            )
+        if "pending approval" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=msg
+            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=msg
+        )
+    return offer
 
 
 @router.post(
@@ -99,8 +160,17 @@ async def send_offer(
     db: DbSession,
     current_user: CurrentUserDep,
 ):
-    """Send the offer to the candidate via email / portal."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = OfferService(db)
+    try:
+        offer = await service.send(
+            offer_id=offer_id,
+            tenant_id=current_user.tenant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        )
+    return offer
 
 
 @router.delete(
@@ -112,6 +182,21 @@ async def withdraw_offer(
     offer_id: UUID,
     db: DbSession,
     current_user: CurrentUserDep,
+    reason: str | None = Query(None, description="Withdrawal reason"),
 ):
-    """Withdraw (cancel) an offer."""
-    raise HTTPException(status_code=501, detail="Not implemented yet")
+    service = OfferService(db)
+    try:
+        await service.withdraw(
+            offer_id=offer_id,
+            tenant_id=current_user.tenant_id,
+            reason=reason,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "already withdrawn" in msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=msg
+            )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=msg
+        )
