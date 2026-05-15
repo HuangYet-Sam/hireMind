@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NCard, NButton, NDataTable, NSpace, NInput, NSelect, NTag, NModal, NSpin } from 'naive-ui'
+import { NCard, NButton, NDataTable, NSpace, NInput, NSelect, NTag, NSpin } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { usePositionStore } from '@/stores/hr/positions'
 import type { Position } from '@/api/hr/positions'
+import PositionCreateModal from '@/components/hr/PositionCreateModal.vue'
 
 const positionStore = usePositionStore()
-const showModal = ref(false)
+const showCreateModal = ref(false)
+const editingPosition = ref<Position | null>(null)
 const keyword = ref('')
 
 const statusOptions = [
@@ -47,7 +49,7 @@ const columns: DataTableColumns<Position> = [
     key: 'actions',
     width: 120,
     render: (row) => h(NSpace, { size: 'small' }, () => [
-      h(NButton, { size: 'tiny', onClick: () => handleEdit(row.id) }, () => '编辑'),
+      h(NButton, { size: 'tiny', onClick: () => handleEdit(row) }, () => '编辑'),
       h(NButton, { size: 'tiny', type: 'error', onClick: () => handleDelete(row.id) }, () => '删除'),
     ]),
   },
@@ -65,16 +67,28 @@ function handleSearch() {
 }
 
 function handleCreate() {
-  showModal.value = true
+  editingPosition.value = null
+  showCreateModal.value = true
 }
 
-function handleEdit(id: string) {
-  // TODO: navigate to edit form
-  console.log('Edit position:', id)
+function handleEdit(row: Position) {
+  editingPosition.value = row
+  showCreateModal.value = true
 }
 
 async function handleDelete(id: string) {
   await positionStore.deletePosition(id)
+}
+
+function handleModalSaved() {
+  positionStore.fetchPositions()
+  editingPosition.value = null
+  showCreateModal.value = false
+}
+
+function handleModalClose() {
+  showCreateModal.value = false
+  editingPosition.value = null
 }
 </script>
 
@@ -103,10 +117,12 @@ async function handleDelete(id: string) {
       />
     </NSpin>
 
-    <!-- TODO: Create/Edit Modal -->
-    <NModal v-model:show="showModal" preset="dialog" title="新建岗位" style="width: 600px;">
-      <NEmpty description="表单开发中..." />
-    </NModal>
+    <PositionCreateModal
+      :show="showCreateModal"
+      :edit-data="editingPosition"
+      @saved="handleModalSaved"
+      @close="handleModalClose"
+    />
   </div>
 </template>
 

@@ -1,12 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as analyticsApi from '@/api/hr/analytics'
-import type { DashboardData, PipelineStage, TimeToHirePeriod } from '@/api/hr/analytics'
+import type { DashboardData, PipelineStage, TimeToHirePeriod, SourceEffectiveness, DepartmentSummary } from '@/api/hr/analytics'
 
 export const useAnalyticsStore = defineStore('hr-analytics', () => {
   const kpi = ref<DashboardData | null>(null)
   const funnel = ref<PipelineStage[]>([])
   const timeToHire = ref<TimeToHirePeriod[]>([])
+  const sourceEffectiveness = ref<SourceEffectiveness[]>([])
+  const departmentSummary = ref<DepartmentSummary[]>([])
   const loading = ref(false)
 
   async function fetchKpi(params?: Record<string, string>) {
@@ -33,6 +35,22 @@ export const useAnalyticsStore = defineStore('hr-analytics', () => {
     }
   }
 
+  async function fetchSourceEffectiveness() {
+    try {
+      sourceEffectiveness.value = await analyticsApi.getSourceBreakdown()
+    } catch (err) {
+      console.error('Failed to fetch source effectiveness:', err)
+    }
+  }
+
+  async function fetchDepartmentSummary() {
+    try {
+      departmentSummary.value = await analyticsApi.getDepartmentSummary()
+    } catch (err) {
+      console.error('Failed to fetch department summary:', err)
+    }
+  }
+
   async function fetchDashboard() {
     loading.value = true
     try {
@@ -51,6 +69,8 @@ export const useAnalyticsStore = defineStore('hr-analytics', () => {
         fetchKpi(params),
         fetchFunnel(params),
         fetchTimeToHire(params),
+        fetchSourceEffectiveness(),
+        fetchDepartmentSummary(),
       ])
     } finally {
       loading.value = false
@@ -58,7 +78,8 @@ export const useAnalyticsStore = defineStore('hr-analytics', () => {
   }
 
   return {
-    kpi, funnel, timeToHire, loading,
-    fetchKpi, fetchFunnel, fetchTimeToHire, fetchDashboard, fetchAll,
+    kpi, funnel, timeToHire, sourceEffectiveness, departmentSummary, loading,
+    fetchKpi, fetchFunnel, fetchTimeToHire, fetchSourceEffectiveness, fetchDepartmentSummary,
+    fetchDashboard, fetchAll,
   }
 })

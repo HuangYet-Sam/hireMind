@@ -4,10 +4,13 @@ import { NCard, NButton, NDataTable, NInput, NSelect, NTag, NSpace, NAvatar, NSp
 import type { DataTableColumns } from 'naive-ui'
 import { useCandidateStore } from '@/stores/hr/candidates'
 import type { Candidate } from '@/api/hr/candidates'
+import CandidateCreateModal from '@/components/hr/CandidateCreateModal.vue'
 
 const candidateStore = useCandidateStore()
 const keyword = ref('')
 const filterStatus = ref('')
+const showCreateModal = ref(false)
+const editingCandidate = ref<Candidate | null>(null)
 
 const statusOptions = [
   { label: '全部', value: '' },
@@ -78,13 +81,24 @@ function handleView(id: string) {
   // TODO: navigate to 360° candidate view
   console.log('View candidate:', id)
 }
+
+function openCreateModal() {
+  editingCandidate.value = null
+  showCreateModal.value = true
+}
+
+function handleModalSaved() {
+  candidateStore.fetchCandidates()
+  showCreateModal.value = false
+  editingCandidate.value = null
+}
 </script>
 
 <template>
   <div class="candidates-view">
     <header class="page-header">
       <h2 class="header-title">候选人</h2>
-      <NButton type="primary">添加候选人</NButton>
+      <NButton type="primary" @click="openCreateModal">添加候选人</NButton>
     </header>
 
     <div class="filter-bar">
@@ -102,6 +116,13 @@ function handleView(id: string) {
         striped
       />
     </NSpin>
+
+    <CandidateCreateModal
+      :show="showCreateModal"
+      :edit-data="editingCandidate"
+      @close="showCreateModal = false"
+      @saved="handleModalSaved"
+    />
   </div>
 </template>
 

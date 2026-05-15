@@ -4,9 +4,12 @@ import { NCard, NButton, NDataTable, NTag, NSpace, NSelect, NSteps, NStep, NSpin
 import type { DataTableColumns } from 'naive-ui'
 import { useOfferStore } from '@/stores/hr/offers'
 import type { Offer } from '@/api/hr/offers'
+import OfferCreateModal from '@/components/hr/OfferCreateModal.vue'
 
 const offerStore = useOfferStore()
 const filterStatus = ref<string>('')
+const showCreateModal = ref(false)
+const editingOffer = ref<Offer | null>(null)
 
 const statusOptions = [
   { label: '全部', value: '' },
@@ -81,13 +84,29 @@ async function handleApprove(id: string) {
 async function handleSend(id: string) {
   await offerStore.sendOffer(id)
 }
+
+function openCreateModal() {
+  editingOffer.value = null
+  showCreateModal.value = true
+}
+
+function openEditModal(offer: Offer) {
+  editingOffer.value = offer
+  showCreateModal.value = true
+}
+
+function handleModalSaved() {
+  showCreateModal.value = false
+  editingOffer.value = null
+  offerStore.fetchOffers()
+}
 </script>
 
 <template>
   <div class="offers-view">
     <header class="page-header">
       <h2 class="header-title">Offer管理</h2>
-      <NButton type="primary">创建Offer</NButton>
+      <NButton type="primary" @click="openCreateModal">创建Offer</NButton>
     </header>
 
     <div class="filter-bar">
@@ -103,6 +122,13 @@ async function handleSend(id: string) {
         striped
       />
     </NSpin>
+
+    <OfferCreateModal
+      :show="showCreateModal"
+      :edit-data="editingOffer"
+      @close="showCreateModal = false"
+      @saved="handleModalSaved"
+    />
   </div>
 </template>
 

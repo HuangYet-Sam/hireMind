@@ -14,7 +14,7 @@ onMounted(() => {
 
 async function handleMatch() {
   if (!selectedPositionId.value) return
-  await matchingStore.fetchMatchMatrix(selectedPositionId.value)
+  await matchingStore.matchCandidatesForPosition(selectedPositionId.value)
 }
 </script>
 
@@ -40,9 +40,9 @@ async function handleMatch() {
 
     <!-- Match Matrix -->
     <NSpin :show="matchingStore.loading">
-      <div v-if="matchingStore.currentMatrix.length" class="match-matrix">
+      <div v-if="matchingStore.matches.length" class="match-matrix">
         <NGrid :cols="1" :y-gap="12">
-          <NGridItem v-for="match in matchingStore.currentMatrix" :key="match.id">
+          <NGridItem v-for="match in matchingStore.matches" :key="match.id">
             <NCard size="small" class="match-row">
               <div class="match-info">
                 <span class="candidate-name">{{ match.candidate_name }}</span>
@@ -55,8 +55,8 @@ async function handleMatch() {
                 />
                 <span class="score-text">{{ Math.round(match.overall_score * 100) }}%</span>
               </div>
-              <div v-if="match.ai_explanation" class="match-explanation">
-                {{ match.ai_explanation }}
+              <div v-if="match.suggestions?.length" class="match-explanation">
+                {{ match.suggestions.join('；') }}
               </div>
             </NCard>
           </NGridItem>

@@ -116,7 +116,7 @@ const router = createRouter({
         {
           path: 'positions/:id',
           name: 'hr.positionDetail',
-          component: () => import('@/views/hr/PositionsView.vue'),
+          component: () => import('@/views/hr/PositionDetailView.vue'),
         },
         {
           path: 'resumes',
@@ -131,7 +131,7 @@ const router = createRouter({
         {
           path: 'candidates/:id',
           name: 'hr.candidateDetail',
-          component: () => import('@/views/hr/CandidatesView.vue'),
+          component: () => import('@/views/hr/CandidateDetailView.vue'),
         },
         {
           path: 'matching',
@@ -146,7 +146,7 @@ const router = createRouter({
         {
           path: 'interviews/:id',
           name: 'hr.interviewDetail',
-          component: () => import('@/views/hr/InterviewsView.vue'),
+          component: () => import('@/views/hr/InterviewDetailView.vue'),
         },
         {
           path: 'offers',
@@ -156,7 +156,7 @@ const router = createRouter({
         {
           path: 'offers/:id',
           name: 'hr.offerDetail',
-          component: () => import('@/views/hr/OffersView.vue'),
+          component: () => import('@/views/hr/OfferDetailView.vue'),
         },
         {
           path: 'analytics',

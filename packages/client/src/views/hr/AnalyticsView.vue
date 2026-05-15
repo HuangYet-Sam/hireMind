@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NCard, NGrid, NGridItem, NSpin, NEmpty, NDatePicker, NStatistic } from 'naive-ui'
+import { NCard, NGrid, NGridItem, NSpin, NEmpty, NDatePicker, NStatistic, NTabs, NTabPane } from 'naive-ui'
 import { useAnalyticsStore } from '@/stores/hr/analytics'
+import RecruitmentFunnelChart from '@/components/hr/RecruitmentFunnelChart.vue'
+import TimeToHireTrendChart from '@/components/hr/TimeToHireTrendChart.vue'
+import SourceEffectivenessChart from '@/components/hr/SourceEffectivenessChart.vue'
+import DepartmentSummaryChart from '@/components/hr/DepartmentSummaryChart.vue'
 
 const analyticsStore = useAnalyticsStore()
 const dateRange = ref<[number, number] | null>(null)
@@ -61,22 +65,45 @@ function handleDateChange(range: [number, number] | null) {
           </NGridItem>
         </NGrid>
 
-        <!-- Recruitment Funnel -->
-        <NCard title="招聘漏斗" size="small" style="margin-top: 16px;">
-          <div v-if="analyticsStore.funnel.length" class="funnel-chart">
-            <div v-for="stage in analyticsStore.funnel" :key="stage.stage" class="funnel-stage">
-              <div class="funnel-bar" :style="{ width: stage.conversion_rate * 100 + '%' }">
-                {{ stage.stage }}: {{ stage.count }}
-              </div>
-            </div>
-          </div>
-          <NEmpty v-else description="暂无漏斗数据" />
-        </NCard>
+        <!-- Charts Row 1: Funnel + Trend -->
+        <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-top: 16px;">
+          <NGridItem span="0:2 1024:1">
+            <NCard title="招聘漏斗" size="small">
+              <RecruitmentFunnelChart v-if="analyticsStore.funnel.length" :data="analyticsStore.funnel" />
+              <NEmpty v-else description="暂无漏斗数据" />
+            </NCard>
+          </NGridItem>
+          <NGridItem span="0:2 1024:1">
+            <NCard title="招聘周期趋势" size="small">
+              <TimeToHireTrendChart v-if="analyticsStore.timeToHire.length" :data="analyticsStore.timeToHire" />
+              <NEmpty v-else description="暂无趋势数据" />
+            </NCard>
+          </NGridItem>
+        </NGrid>
 
-        <!-- Trend Chart Placeholder -->
-        <NCard title="招聘趋势" size="small" style="margin-top: 16px;">
-          <NEmpty description="趋势图表开发中（集成 ECharts）" />
-        </NCard>
+        <!-- Charts Row 2: Source + Department -->
+        <NGrid :cols="2" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-top: 16px;">
+          <NGridItem span="0:2 1024:1">
+            <NCard title="渠道转化效果" size="small">
+              <SourceEffectivenessChart v-if="analyticsStore.sourceEffectiveness.length" :data="analyticsStore.sourceEffectiveness" />
+              <NEmpty v-else description="暂无渠道数据" />
+            </NCard>
+          </NGridItem>
+          <NGridItem span="0:2 1024:1">
+            <NCard title="部门招聘分布" size="small">
+              <NTabs type="segment" size="small">
+                <NTabPane name="positions" tab="按岗位">
+                  <DepartmentSummaryChart v-if="analyticsStore.departmentSummary.length" :data="analyticsStore.departmentSummary" metric="positions" />
+                  <NEmpty v-else description="暂无部门数据" />
+                </NTabPane>
+                <NTabPane name="candidates" tab="按候选人">
+                  <DepartmentSummaryChart v-if="analyticsStore.departmentSummary.length" :data="analyticsStore.departmentSummary" metric="candidates" />
+                  <NEmpty v-else description="暂无部门数据" />
+                </NTabPane>
+              </NTabs>
+            </NCard>
+          </NGridItem>
+        </NGrid>
       </div>
     </NSpin>
   </div>
@@ -110,25 +137,5 @@ function handleDateChange(range: [number, number] | null) {
 
 .analytics-controls {
   margin-bottom: 16px;
-}
-
-.funnel-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.funnel-stage {
-  .funnel-bar {
-    height: 32px;
-    background: rgba(var(--accent-primary-rgb), 0.15);
-    border-radius: $radius-sm;
-    display: flex;
-    align-items: center;
-    padding: 0 12px;
-    font-size: 13px;
-    color: $text-primary;
-    min-width: 80px;
-  }
 }
 </style>

@@ -4,9 +4,11 @@ import { NCard, NButton, NDataTable, NTag, NSpace, NSelect, NSpin } from 'naive-
 import type { DataTableColumns } from 'naive-ui'
 import { useInterviewStore } from '@/stores/hr/interviews'
 import type { Interview } from '@/api/hr/interviews'
+import InterviewCreateModal from '@/components/hr/InterviewCreateModal.vue'
 
 const interviewStore = useInterviewStore()
 const filterStatus = ref<string>('')
+const showCreateModal = ref(false)
 
 const statusOptions = [
   { label: '全部', value: '' },
@@ -68,13 +70,18 @@ function handleView(id: string) {
 async function handleCancel(id: string) {
   await interviewStore.cancelInterview(id)
 }
+
+function handleCreateSaved() {
+  interviewStore.fetchInterviews()
+  showCreateModal.value = false
+}
 </script>
 
 <template>
   <div class="interviews-view">
     <header class="page-header">
       <h2 class="header-title">面试管理</h2>
-      <NButton type="primary">安排面试</NButton>
+      <NButton type="primary" @click="showCreateModal = true">安排面试</NButton>
     </header>
 
     <div class="filter-bar">
@@ -92,6 +99,12 @@ async function handleCancel(id: string) {
     </NSpin>
 
     <!-- TODO: Calendar view tab -->
+
+    <InterviewCreateModal
+      :show="showCreateModal"
+      @close="showCreateModal = false"
+      @saved="handleCreateSaved"
+    />
   </div>
 </template>
 
