@@ -16,6 +16,14 @@ PUBLIC_PATHS = {
     "/api/openapi.json",
 }
 
+PUBLIC_PATH_PREFIXES = (
+    "/api/v1/auth/",
+    "/api/v1/feedback/",
+    "/api/v1/onboarding/",
+    "/api/v1/share/",
+    "/api/v1/candidate/",
+)
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
 
@@ -23,6 +31,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
         if request.url.path in PUBLIC_PATHS or request.method == "OPTIONS":
+            return await call_next(request)
+
+        if request.url.path.startswith(PUBLIC_PATH_PREFIXES):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")

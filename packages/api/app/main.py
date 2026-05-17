@@ -14,12 +14,15 @@ from app.config import settings
 from app.routers import (
     ai_tasks,
     analytics,
+    auth,
     candidates,
+    dashboard,
     departments,
     interviews,
     matching,
     offers,
     positions,
+    public,
     resumes,
 )
 
@@ -117,6 +120,9 @@ app.include_router(offers.router, prefix="/api/v1/offers", tags=["Offers"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
 app.include_router(departments.router, prefix="/api/v1/departments", tags=["Departments"])
 app.include_router(ai_tasks.router, prefix="/api/v1/ai-tasks", tags=["AI Tasks"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
+app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
+app.include_router(public.router, tags=["Public Token URLs"])
 
 
 # ── Root & Health Check ────────────────────────────────────────

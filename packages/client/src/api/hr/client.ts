@@ -1,11 +1,13 @@
 /**
  * HireMind Recruitment API Client
  *
- * Direct connection to FastAPI backend on port 8000.
+ * Uses relative path /api/v1 — in production Nginx proxies to FastAPI backend.
  * Separate from the Hermes BFF (Koa :8648) used by the admin panel.
  */
+import router from '@/router'
+import { clearApiKey } from '@/api/client'
 
-const HR_API_BASE = 'http://127.0.0.1:8000/api/v1'
+const HR_API_BASE = '/api/v1'
 
 function getAuthHeaders(): Record<string, string> {
   const token = localStorage.getItem('hermes_api_key') || ''
@@ -48,7 +50,12 @@ export async function hrRequest<T>(
   const res = await fetch(url, { ...options, headers })
 
   if (res.status === 401) {
-    console.error('[HR API] Unauthorized')
+    console.error('[HR API] Unauthorized — clearing token and redirecting to login')
+    clearApiKey()
+    localStorage.removeItem('hr_tenant_id')
+    if (router.currentRoute.value.name !== 'login') {
+      router.push({ name: 'login' })
+    }
     throw new Error('Unauthorized')
   }
 

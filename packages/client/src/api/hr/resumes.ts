@@ -51,7 +51,7 @@ export async function reparseResume(id: string): Promise<ResumeParseResult> {
 }
 
 export async function uploadResume(file: File, candidateId?: string, positionId?: string, source?: string): Promise<Resume> {
-  const HR_API_BASE = 'http://127.0.0.1:8000/api/v1'
+  const HR_API_BASE = '/api/v1'
 
   const formData = new FormData()
   formData.append('file', file)

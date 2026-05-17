@@ -124,6 +124,11 @@ const router = createRouter({
           component: () => import('@/views/hr/ResumesView.vue'),
         },
         {
+          path: 'resumes/:id',
+          name: 'hr.resumeDetail',
+          component: () => import('@/views/hr/ResumeDetailView.vue'),
+        },
+        {
           path: 'candidates',
           name: 'hr.candidates',
           component: () => import('@/views/hr/CandidatesView.vue'),
@@ -169,6 +174,38 @@ const router = createRouter({
           component: () => import('@/views/hr/TasksView.vue'),
         },
       ],
+    },
+
+    // ─── Token URL Public Routes ─────────────────────────
+    {
+      path: '/feedback/:token',
+      name: 'public.feedback',
+      component: () => import('@/views/public/FeedbackView.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/onboarding/:token',
+      name: 'public.onboarding',
+      component: () => import('@/views/public/OnboardingView.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/share/:token/dashboard',
+      name: 'public.shareDashboard',
+      component: () => import('@/views/public/ShareDashboardView.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/candidate/:token/profile',
+      name: 'public.candidateProfile',
+      component: () => import('@/views/public/CandidateProfileView.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/candidate/:token/offer',
+      name: 'public.candidateOffer',
+      component: () => import('@/views/public/CandidateOfferView.vue'),
+      meta: { public: true },
     },
   ],
 })

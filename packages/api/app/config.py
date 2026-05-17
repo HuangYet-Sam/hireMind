@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # ── Admin Account (M1 hardcoded) ────────────────────────
+    ADMIN_PASSWORD: str = "Admin@123"
+
     # ── Hermes Agent Integration ─────────────────────────────
     HERMES_AGENT_URL: str = "http://localhost:8648"
     HERMES_AGENT_API_KEY: str = ""
