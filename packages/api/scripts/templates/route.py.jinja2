@@ -1,0 +1,26 @@
+"""
+Auto-generated FastAPI routes from @AiCapability metadata.
+
+DO NOT EDIT - regenerate with: python -m scripts.codegen --routes
+"""
+
+from __future__ import annotations
+
+from fastapi import APIRouter
+
+router = APIRouter()
+{% for cap in capabilities %}
+{% if cap.endpoint and cap.method %}
+
+
+@router.{{ cap.method|lower }}(
+    "{{ cap.endpoint }}",
+    {% if cap.summary %}summary="{{ cap.summary }}",{% endif %}
+    {% if cap.tags %}tags={{ cap.tags }},{% endif %}
+)
+async def {{ cap.capability|replace('-', '_') }}():
+    """{{ cap.description or cap.name or cap.capability }}"""
+    # TODO: wire to service layer — generated skeleton
+    pass
+{% endif %}
+{% endfor %}
