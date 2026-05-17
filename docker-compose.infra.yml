@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: hiremind
       POSTGRES_PASSWORD: hiremind_dev
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - hiremind-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -64,11 +64,22 @@ services:
         condition: service_healthy
     environment:
       - DATABASE_URL=postgresql+asyncpg://hiremind:hiremind_dev@postgres:5432/hiremind
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
       - REDIS_URL=redis://redis:6379/0
       - MINIO_ENDPOINT=minio:9000
-      - CORS_ORIGINS=["http://localhost:8648","http://localhost:5173"]
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_BUCKET_RESUMES=resumes
+      - MINIO_SECURE=false
+      - CORS_ORIGINS=["http://localhost:8648","http://localhost:5173","http://localhost:3000"]
     volumes:
       - ./packages/api/uploads:/app/uploads
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        alembic upgrade head
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
     restart: unless-stopped
 
 volumes:
