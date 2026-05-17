@@ -69,7 +69,8 @@ onMounted(async () => {
 async function fetchTasks() {
   loading.value = true
   try {
-    tasks.value = await tasksApi.listAiTasks()
+    const res = await tasksApi.listAiTasks()
+    tasks.value = res.items
   } catch (err) {
     console.error('Failed to fetch AI tasks:', err)
   } finally {

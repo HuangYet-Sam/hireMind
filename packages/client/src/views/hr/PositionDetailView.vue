@@ -39,19 +39,19 @@ const employmentTypeMap: Record<string, string> = {
   full_time: '全职',
   part_time: '兼职',
   contract: '合同工',
-  intern: '实习',
+  internship: '实习',
 }
 
 const priorityColorMap: Record<string, 'default' | 'info' | 'warning' | 'error'> = {
   low: 'default',
-  medium: 'info',
+  normal: 'info',
   high: 'warning',
   urgent: 'error',
 }
 
 const priorityLabelMap: Record<string, string> = {
   low: '低',
-  medium: '中',
+  normal: '普通',
   high: '高',
   urgent: '紧急',
 }
@@ -222,12 +222,12 @@ async function handleMatch() {
             <NDescriptionsItem label="技能标签" :span="2">
               <NSpace>
                 <NTag
-                  v-for="skill in position.required_skills"
-                  :key="skill"
+                  v-for="(skill, idx) in position.required_skills"
+                  :key="idx"
                   size="small"
                   type="info"
                 >
-                  {{ skill }}
+                  {{ typeof skill === 'string' ? skill : skill.name || JSON.stringify(skill) }}
                 </NTag>
                 <NTag v-if="!position.required_skills?.length" type="default" size="small">无</NTag>
               </NSpace>
@@ -252,19 +252,11 @@ async function handleMatch() {
           </NCard>
 
           <NCard title="岗位要求" size="small" style="margin-top: 12px">
-            <ul v-if="position.requirements?.length" class="detail-list">
-              <li v-for="(req, idx) in position.requirements" :key="idx">{{ req }}</li>
-            </ul>
-            <p v-else class="detail-text">暂无要求</p>
+            <p class="detail-text" style="white-space: pre-wrap">{{ position.requirements || '暂无要求' }}</p>
           </NCard>
 
           <NCard title="福利待遇" size="small" style="margin-top: 12px">
-            <NSpace v-if="position.benefits?.length">
-              <NTag v-for="(benefit, idx) in position.benefits" :key="idx" size="small">
-                {{ benefit }}
-              </NTag>
-            </NSpace>
-            <p v-else class="detail-text">暂无福利信息</p>
+            <p class="detail-text" style="white-space: pre-wrap">{{ position.benefits || '暂无福利信息' }}</p>
           </NCard>
         </NTabPane>
 

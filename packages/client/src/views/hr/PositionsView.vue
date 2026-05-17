@@ -20,7 +20,7 @@ const statusOptions = [
   { label: '招聘中', value: 'open' },
   { label: '已暂停', value: 'paused' },
   { label: '已关闭', value: 'closed' },
-  { label: '已招满', value: 'filled' },
+  { label: '已归档', value: 'archived' },
 ]
 
 const filterStatus = ref('')
@@ -30,7 +30,7 @@ const statusColorMap: Record<string, string> = {
   open: 'success',
   paused: 'warning',
   closed: 'error',
-  filled: 'info',
+  archived: 'info',
 }
 
 const columns: DataTableColumns<Position> = [

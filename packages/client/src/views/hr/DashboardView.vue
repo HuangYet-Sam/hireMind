@@ -23,12 +23,12 @@ onMounted(() => {
         <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
           <NGridItem span="0:4 640:2 1024:1">
             <NCard size="small" class="kpi-card">
-              <NStatistic label="在招岗位" :value="analyticsStore.kpi?.total_open_positions ?? '-'" />
+              <NStatistic label="在招岗位" :value="analyticsStore.kpi?.open_positions ?? '-'" />
             </NCard>
           </NGridItem>
           <NGridItem span="0:4 640:2 1024:1">
             <NCard size="small" class="kpi-card">
-              <NStatistic label="候选人总数" :value="analyticsStore.kpi?.total_candidates ?? '-'" />
+              <NStatistic label="候选人总数" :value="analyticsStore.kpi?.candidates_in_pipeline ?? '-'" />
             </NCard>
           </NGridItem>
           <NGridItem span="0:4 640:2 1024:1">
@@ -38,7 +38,7 @@ onMounted(() => {
           </NGridItem>
           <NGridItem span="0:4 640:2 1024:1">
             <NCard size="small" class="kpi-card">
-              <NStatistic label="本月入职" :value="analyticsStore.kpi?.hires_this_month ?? '-'" />
+              <NStatistic label="待处理Offer" :value="analyticsStore.kpi?.offers_pending ?? '-'" />
             </NCard>
           </NGridItem>
         </NGrid>

@@ -90,18 +90,12 @@ const resumeStatusLabel: Record<string, string> = {
 }
 
 const resumeColumns: DataTableColumns<Resume> = [
-  { title: '文件名', key: 'filename', ellipsis: { tooltip: true } },
+  { title: '文件名', key: 'original_filename', ellipsis: { tooltip: true } },
   {
     title: '解析状态',
     key: 'parse_status',
     width: 100,
     render: (row) => h(NTag, { type: resumeStatusColor[row.parse_status], size: 'small' }, { default: () => resumeStatusLabel[row.parse_status] }),
-  },
-  {
-    title: 'AI标签',
-    key: 'tags',
-    width: 200,
-    render: (row) => h(NSpace, { size: 4 }, () => row.tags.map(tag => h(NTag, { size: 'small', type: 'info' }, { default: () => tag }))),
   },
   {
     title: '文件大小',

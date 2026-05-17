@@ -1,14 +1,13 @@
 import { hrGet, hrPost } from './client'
-
-// ─── Types ──────────────────────────────────────────────
+import type { PaginatedResponse } from './client'
 
 export interface AiTask {
   id: string
-  type: 'resume_parsing' | 'candidate_matching' | 'batch_scoring' | 'report_generation' | 'candidate_summary'
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  type: string
+  status: string
   progress: number
   input_summary: string
-  result: unknown | null
+  result: unknown
   error: string | null
   created_by: string
   created_at: string
@@ -19,19 +18,21 @@ export interface AiTask {
 export interface AiTaskListParams {
   page?: number
   page_size?: number
-  status?: AiTask['status']
-  type?: AiTask['type']
+  status?: string
+  type?: string
 }
 
 export interface CreateAiTaskRequest {
-  type: AiTask['type']
+  type: string
   input: Record<string, unknown>
 }
 
-// ─── API Functions ──────────────────────────────────────
-
-export async function listAiTasks(params?: AiTaskListParams): Promise<AiTask[]> {
-  return hrGet<AiTask[]>('/ai-tasks', params as Record<string, string | number>)
+export async function listAiTasks(params?: AiTaskListParams): Promise<PaginatedResponse<AiTask>> {
+  try {
+    return await hrGet<PaginatedResponse<AiTask>>('/ai-tasks', params as Record<string, string | number>)
+  } catch {
+    return { items: [], total: 0, page: 1, page_size: 20, pages: 0 }
+  }
 }
 
 export async function getAiTask(id: string): Promise<AiTask> {

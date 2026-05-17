@@ -45,7 +45,7 @@ function handleDateChange(range: [number, number] | null) {
         <NGrid :cols="4" :x-gap="16" :y-gap="16" responsive="screen" item-responsive>
           <NGridItem span="0:4 640:2 1024:1">
             <NCard size="small">
-              <NStatistic label="Offer接受率" :value="analyticsStore.kpi ? Math.round(analyticsStore.kpi.offer_acceptance_rate * 100) + '%' : '-'" />
+              <NStatistic label="候选人总数" :value="analyticsStore.kpi?.candidates_in_pipeline ?? '-'" />
             </NCard>
           </NGridItem>
           <NGridItem span="0:4 640:2 1024:1">
@@ -55,7 +55,7 @@ function handleDateChange(range: [number, number] | null) {
           </NGridItem>
           <NGridItem span="0:4 640:2 1024:1">
             <NCard size="small">
-              <NStatistic label="在招岗位" :value="analyticsStore.kpi?.total_open_positions ?? '-'" />
+              <NStatistic label="在招岗位" :value="analyticsStore.kpi?.open_positions ?? '-'" />
             </NCard>
           </NGridItem>
           <NGridItem span="0:4 640:2 1024:1">

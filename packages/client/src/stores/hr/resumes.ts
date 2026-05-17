@@ -42,7 +42,8 @@ export const useResumeStore = defineStore('hr-resumes', () => {
   }
 
   async function reparseResume(id: string) {
-    const updated = await resumesApi.reparseResume(id)
+    await resumesApi.reparseResume(id)
+    const updated = await resumesApi.getResume(id)
     const idx = resumes.value.findIndex(r => r.id === id)
     if (idx !== -1) resumes.value[idx] = updated
     if (current.value?.id === id) current.value = updated

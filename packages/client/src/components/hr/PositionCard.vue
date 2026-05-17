@@ -13,7 +13,7 @@ const emit = defineEmits<{
 }>()
 
 const statusColor = computed(() => {
-  const map: Record<string, string> = { draft: 'default', open: 'success', paused: 'warning', closed: 'error', filled: 'info' }
+  const map: Record<string, string> = { draft: 'default', open: 'success', paused: 'warning', closed: 'error', archived: 'info' }
   return map[props.position.status] || 'default'
 })
 </script>
@@ -26,11 +26,10 @@ const statusColor = computed(() => {
     </div>
     <div class="card-body">
       <div class="meta-row">
-        <span>{{ position.department_name || '-' }}</span>
-        <span>{{ position.location }}</span>
+        <span>{{ position.location || '-' }}</span>
       </div>
       <div class="meta-row">
-        <span>人数: {{ position.hired_count }}/{{ position.headcount }}</span>
+        <span>人数: {{ position.headcount }}</span>
         <NTag v-if="position.priority === 'urgent'" type="error" size="small">紧急</NTag>
         <NTag v-else-if="position.priority === 'high'" type="warning" size="small">高优</NTag>
       </div>

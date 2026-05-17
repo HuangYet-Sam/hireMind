@@ -79,9 +79,23 @@ export async function hrGet<T>(path: string, params?: Record<string, string | nu
   return hrRequest<T>(url)
 }
 
-/** POST request */
-export async function hrPost<T>(path: string, body?: unknown): Promise<T> {
-  return hrRequest<T>(path, {
+/** POST request with optional query params */
+export async function hrPost<T>(
+  path: string,
+  body?: unknown,
+  params?: Record<string, string | number | boolean | undefined>,
+): Promise<T> {
+  let url = path
+  if (params) {
+    const filtered = Object.entries(params).filter(([, v]) => v !== undefined)
+    if (filtered.length > 0) {
+      const qs = new URLSearchParams(
+        filtered.map(([k, v]) => [k, String(v)]),
+      ).toString()
+      url += `?${qs}`
+    }
+  }
+  return hrRequest<T>(url, {
     method: 'POST',
     body: body ? JSON.stringify(body) : undefined,
   })

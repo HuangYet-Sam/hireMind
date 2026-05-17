@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
+import { useRouter } from 'vue-router'
 import { NButton, NDataTable, NInput, NSelect, NTag, NSpace, NAvatar, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useCandidateStore } from '@/stores/hr/candidates'
@@ -8,31 +9,31 @@ import CandidateCreateModal from '@/components/hr/CandidateCreateModal.vue'
 import ErrorBoundary from '@/components/hr/ErrorBoundary.vue'
 import TableSkeleton from '@/components/hr/TableSkeleton.vue'
 
+const router = useRouter()
 const candidateStore = useCandidateStore()
 const message = useMessage()
 const keyword = ref('')
-const filterStatus = ref('')
+const filterStage = ref('')
 const showCreateModal = ref(false)
 const editingCandidate = ref<Candidate | null>(null)
 
-const statusOptions = [
+const stageOptions = [
   { label: '全部', value: '' },
-  { label: '新候选人', value: 'new' },
-  { label: '筛选中', value: 'screening' },
-  { label: '面试中', value: 'interviewing' },
+  { label: '已投递', value: 'applied' },
+  { label: '已筛选', value: 'screened' },
+  { label: '面试中', value: 'interviewed' },
   { label: '已Offer', value: 'offered' },
   { label: '已入职', value: 'hired' },
   { label: '已拒绝', value: 'rejected' },
 ]
 
-const statusColorMap: Record<string, string> = {
-  new: 'default',
-  screening: 'warning',
-  interviewing: 'info',
+const stageColorMap: Record<string, string> = {
+  applied: 'default',
+  screened: 'info',
+  interviewed: 'warning',
   offered: 'success',
   hired: 'success',
   rejected: 'error',
-  withdrawn: 'default',
 }
 
 const columns: DataTableColumns<Candidate> = [
@@ -48,10 +49,10 @@ const columns: DataTableColumns<Candidate> = [
   { title: '当前公司', key: 'current_company', width: 140, ellipsis: { tooltip: true } },
   { title: '职位', key: 'current_title', width: 120, ellipsis: { tooltip: true } },
   {
-    title: '状态',
-    key: 'status',
+    title: '阶段',
+    key: 'stage',
     width: 90,
-    render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] as any }, () => row.status),
+    render: (row) => h(NTag, { size: 'small', type: stageColorMap[row.stage] as any }, () => row.stage),
   },
   { title: '来源', key: 'source', width: 90 },
   { title: '经验(年)', key: 'years_of_experience', width: 80 },
@@ -70,12 +71,12 @@ onMounted(() => {
 function handleSearch() {
   candidateStore.fetchCandidates({
     keyword: keyword.value || undefined,
-    status: (filterStatus.value || undefined) as any,
+    stage: (filterStage.value || undefined) as any,
   })
 }
 
 function handleView(id: string) {
-  console.log('View candidate:', id)
+  router.push({ name: 'hr.candidateDetail', params: { id } })
 }
 
 function openCreateModal() {
@@ -101,7 +102,7 @@ function handleModalSaved() {
 
       <div class="filter-bar">
         <NInput v-model:value="keyword" placeholder="搜索候选人..." clearable style="width: 240px;" @keyup.enter="handleSearch" />
-        <NSelect v-model:value="filterStatus" :options="statusOptions" style="width: 120px;" @update:value="handleSearch" />
+        <NSelect v-model:value="filterStage" :options="stageOptions" style="width: 120px;" @update:value="handleSearch" />
         <NButton @click="handleSearch">搜索</NButton>
       </div>
 

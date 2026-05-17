@@ -25,7 +25,7 @@ const parseColorMap: Record<string, string> = {
 }
 
 const columns: DataTableColumns<Resume> = [
-  { title: '文件名', key: 'filename', ellipsis: { tooltip: true } },
+  { title: '文件名', key: 'original_filename', ellipsis: { tooltip: true } },
   { title: '候选人ID', key: 'candidate_id', width: 120 },
   {
     title: '解析状态',
@@ -33,8 +33,7 @@ const columns: DataTableColumns<Resume> = [
     width: 100,
     render: (row) => h(NTag, { size: 'small', type: parseColorMap[row.parse_status] as any }, () => row.parse_status),
   },
-  { title: 'AI标签', key: 'tags', width: 200, render: (row) => h(NSpace, { size: 4 }, () => row.tags.slice(0, 3).map(t => h(NTag, { size: 'small' }, () => t))) },
-  { title: '来源', key: 'source', width: 90 },
+  { title: '页数', key: 'page_count', width: 80 },
   { title: '上传时间', key: 'created_at', width: 120 },
   {
     title: '操作',
@@ -55,7 +54,7 @@ onMounted(() => {
 function handleSearch() {
   resumeStore.fetchResumes({
     keyword: keyword.value || undefined,
-    parse_status: (filterParseStatus.value || undefined) as any,
+    status: filterParseStatus.value || undefined,
   })
 }
 

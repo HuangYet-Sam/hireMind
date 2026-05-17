@@ -35,7 +35,7 @@ async function loadDepartments() {
 function buildTreeOptions(list: Department[]): TreeOption[] {
   return list.map(dept => ({
     key: dept.id,
-    label: `${dept.name} (${dept.open_positions})`,
+    label: `${dept.name} (${dept.current_headcount})`,
     children: dept.children?.length ? buildTreeOptions(dept.children) : undefined,
   }))
 }
@@ -103,7 +103,7 @@ const statusMap: Record<string, { label: string; type: 'success' | 'warning' | '
   open: { label: '招聘中', type: 'success' },
   paused: { label: '暂停', type: 'warning' },
   closed: { label: '已关闭', type: 'info' },
-  filled: { label: '已满', type: 'info' },
+  archived: { label: '已归档', type: 'info' },
 }
 
 const positionColumns: DataTableColumns<Position> = [
@@ -159,9 +159,9 @@ const positionColumns: DataTableColumns<Position> = [
               </NSpace>
             </template>
             <div class="dept-meta">
-              <span>负责人：{{ selectedDept.head_name || '未指定' }}</span>
-              <span>人数：{{ selectedDept.head_count }}</span>
-              <span>在招岗位：{{ selectedDept.open_positions }}</span>
+              <span>负责人：{{ selectedDept.manager_name || '未指定' }}</span>
+              <span>当前人数：{{ selectedDept.current_headcount }}</span>
+              <span>编制上限：{{ selectedDept.headcount_limit ?? '不限' }}</span>
               <span v-if="selectedDept.description" class="dept-desc">{{ selectedDept.description }}</span>
             </div>
           </NCard>

@@ -1,23 +1,58 @@
 import { hrGet, hrPost } from './client'
 
-// ─── Types ──────────────────────────────────────────────
+export interface MatchResultItem {
+  candidate_id: string
+  candidate_name: string | null
+  overall_score: number
+  skill_score: number | null
+  experience_score: number | null
+  education_score: number | null
+  matched_skills: string[]
+  missing_skills: string[]
+  explanation: string | null
+}
 
-export interface MatchResult {
+export interface PositionMatchResult {
+  position_id: string
+  position_title: string | null
+  total_candidates: number
+  matches: MatchResultItem[]
+}
+
+export interface CandidateMatchResultItem {
+  position_id: string
+  position_title: string | null
+  overall_score: number
+  skill_score: number | null
+  matched_skills: string[]
+  missing_skills: string[]
+  explanation: string | null
+}
+
+export interface CandidateMatchResult {
+  candidate_id: string
+  total_positions: number
+  matches: CandidateMatchResultItem[]
+}
+
+export interface MatchDetailResponse {
   id: string
   position_id: string
   candidate_id: string
-  candidate_name?: string
-  overall_score: number
-  skill_score: number
-  experience_score: number
-  education_score: number
-  bonus_score: number
-  matched_skills: string[]
-  missing_skills: string[]
-  strengths: string[]
-  gaps: string[]
-  suggestions: string[]
-  created_at: string
+  status: string
+  overall_score: number | null
+  skill_score: number | null
+  experience_score: number | null
+  education_score: number | null
+  score_breakdown: Record<string, unknown> | null
+  match_details: Record<string, unknown> | null
+  matched_at: string | null
+}
+
+export interface MatchListResponse {
+  items: MatchDetailResponse[]
+  total: number
+  pages: number
 }
 
 export interface MatchRequestParams {
@@ -25,24 +60,30 @@ export interface MatchRequestParams {
   min_score?: number
 }
 
-// ─── API Functions ──────────────────────────────────────
-
 export async function matchCandidatesForPosition(
   positionId: string,
   params?: MatchRequestParams
-): Promise<{ position_id: string; matches: MatchResult[]; total: number }> {
-  return hrPost(`/matching/position/${positionId}/candidates`, params)
+): Promise<PositionMatchResult> {
+  return hrPost<PositionMatchResult>(
+    `/matching/position/${positionId}/candidates`,
+    undefined,
+    params as Record<string, string | number | boolean | undefined>,
+  )
 }
 
 export async function matchPositionsForCandidate(
   candidateId: string,
   params?: MatchRequestParams
-): Promise<{ candidate_id: string; matches: MatchResult[]; total: number }> {
-  return hrPost(`/matching/candidate/${candidateId}/positions`, params)
+): Promise<CandidateMatchResult> {
+  return hrPost<CandidateMatchResult>(
+    `/matching/candidate/${candidateId}/positions`,
+    undefined,
+    params as Record<string, string | number | boolean | undefined>,
+  )
 }
 
 export async function getMatchResult(
   positionId: string
-): Promise<{ position_id: string; matches: MatchResult[]; total: number } | null> {
-  return hrGet(`/matching/position/${positionId}/result`)
+): Promise<MatchListResponse | null> {
+  return hrGet<MatchListResponse>(`/matching/position/${positionId}/result`)
 }

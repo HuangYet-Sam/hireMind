@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { NModal, NForm, NFormItem, NInput, NSelect, NButton, NSpace, useMessage } from 'naive-ui'
+import { NModal, NForm, NFormItem, NInput, NInputNumber, NSelect, NButton, NSpace, useMessage } from 'naive-ui'
 import type { FormInst, FormRules } from 'naive-ui'
 import * as departmentsApi from '@/api/hr/departments'
 import type { Department, CreateDepartmentRequest, UpdateDepartmentRequest } from '@/api/hr/departments'
@@ -24,7 +24,10 @@ const formData = ref<CreateDepartmentRequest>({
   name: '',
   parent_id: undefined,
   description: '',
-  head_name: '',
+  head_user_id: undefined,
+  code: undefined,
+  headcount_limit: undefined,
+  sort_order: 0,
 })
 
 const rules: FormRules = {
@@ -50,11 +53,14 @@ watch(() => props.show, (val) => {
       formData.value = {
         name: props.editData.name,
         parent_id: props.editData.parent_id ?? undefined,
-        description: props.editData.description,
-        head_name: props.editData.head_name ?? '',
+        description: props.editData.description ?? undefined,
+        head_user_id: props.editData.head_user_id ?? undefined,
+        code: props.editData.code ?? undefined,
+        headcount_limit: props.editData.headcount_limit ?? undefined,
+        sort_order: props.editData.sort_order ?? 0,
       }
     } else {
-      formData.value = { name: '', parent_id: undefined, description: '', head_name: '' }
+      formData.value = { name: '', parent_id: undefined, description: '', head_user_id: undefined, code: undefined, headcount_limit: undefined, sort_order: 0 }
     }
   }
 })
@@ -71,7 +77,10 @@ async function handleSubmit() {
         name: formData.value.name,
         parent_id: formData.value.parent_id ?? null,
         description: formData.value.description || undefined,
-        head_name: formData.value.head_name || null,
+        head_user_id: formData.value.head_user_id || null,
+        code: formData.value.code || null,
+        headcount_limit: formData.value.headcount_limit ?? undefined,
+        sort_order: formData.value.sort_order,
       }
       await departmentsApi.updateDepartment(props.editData.id, payload)
       message.success('部门已更新')
@@ -109,8 +118,14 @@ async function handleSubmit() {
           clearable
         />
       </NFormItem>
-      <NFormItem label="负责人" path="head_name">
-        <NInput v-model:value="formData.head_name" placeholder="请输入负责人姓名" />
+      <NFormItem label="部门编码" path="code">
+        <NInput v-model:value="formData.code" placeholder="如：ENG, HR（可选）" clearable />
+      </NFormItem>
+      <NFormItem label="负责人ID" path="head_user_id">
+        <NInput v-model:value="formData.head_user_id" placeholder="负责人用户ID（可选）" clearable />
+      </NFormItem>
+      <NFormItem label="编制上限" path="headcount_limit">
+        <NInputNumber v-model:value="formData.headcount_limit" placeholder="编制上限（可选）" :min="1" style="width: 100%" clearable />
       </NFormItem>
       <NFormItem label="描述" path="description">
         <NInput v-model:value="formData.description" type="textarea" :rows="3" placeholder="部门描述（可选）" />

@@ -24,7 +24,7 @@ const formData = ref({
   is_remote: false,
   employment_type: 'full_time' as string,
   headcount: 1,
-  priority: 'medium' as string,
+  priority: 'normal' as string,
   salary_min: null as number | null,
   salary_max: null as number | null,
   description: '',
@@ -42,12 +42,12 @@ const employmentTypeOptions = [
   { label: '全职', value: 'full_time' },
   { label: '兼职', value: 'part_time' },
   { label: '合同', value: 'contract' },
-  { label: '实习', value: 'intern' },
+  { label: '实习', value: 'internship' },
 ]
 
 const priorityOptions = [
   { label: '低', value: 'low' },
-  { label: '中', value: 'medium' },
+  { label: '普通', value: 'normal' },
   { label: '高', value: 'high' },
   { label: '紧急', value: 'urgent' },
 ]
@@ -74,13 +74,13 @@ watch(() => props.editData, (val) => {
       is_remote: val.is_remote || false,
       employment_type: val.employment_type || 'full_time',
       headcount: val.headcount || 1,
-      priority: val.priority || 'medium',
+      priority: val.priority || 'normal',
       salary_min: val.salary_min ?? null,
       salary_max: val.salary_max ?? null,
       description: val.description || '',
-      requirements: Array.isArray(val.requirements) ? val.requirements.join('\n') : '',
-      benefits: Array.isArray(val.benefits) ? val.benefits.join('\n') : '',
-      required_skills: val.required_skills || [],
+      requirements: typeof val.requirements === 'string' ? val.requirements : '',
+      benefits: typeof val.benefits === 'string' ? val.benefits : '',
+      required_skills: Array.isArray(val.required_skills) ? val.required_skills.map((s: any) => typeof s === 'string' ? s : s.name || s.skill || '') : [],
       preferred_skills: val.preferred_skills || [],
       education_requirement: val.education_requirement || '',
       experience_years_min: val.experience_years_min ?? null,
@@ -93,7 +93,7 @@ watch(() => props.editData, (val) => {
       is_remote: false,
       employment_type: 'full_time',
       headcount: 1,
-      priority: 'medium',
+      priority: 'normal',
       salary_min: null,
       salary_max: null,
       description: '',
@@ -119,9 +119,9 @@ function buildPayload(): CreatePositionRequest {
     salary_min: formData.value.salary_min ?? undefined,
     salary_max: formData.value.salary_max ?? undefined,
     description: formData.value.description || undefined,
-    requirements: formData.value.requirements ? formData.value.requirements.split('\n').filter(Boolean) : undefined,
-    benefits: formData.value.benefits ? formData.value.benefits.split('\n').filter(Boolean) : undefined,
-    required_skills: formData.value.required_skills.length ? formData.value.required_skills : undefined,
+    requirements: formData.value.requirements || undefined,
+    benefits: formData.value.benefits || undefined,
+    required_skills: formData.value.required_skills.length ? formData.value.required_skills.map(s => ({ name: s })) : undefined,
     preferred_skills: formData.value.preferred_skills.length ? formData.value.preferred_skills : undefined,
     education_requirement: formData.value.education_requirement || undefined,
     experience_years_min: formData.value.experience_years_min ?? undefined,
@@ -131,6 +131,10 @@ function buildPayload(): CreatePositionRequest {
 async function handleSubmit() {
   if (!formData.value.title.trim()) {
     message.warning('请输入岗位名称')
+    return
+  }
+  if (!formData.value.department_id) {
+    message.warning('请选择所属部门')
     return
   }
   loading.value = true

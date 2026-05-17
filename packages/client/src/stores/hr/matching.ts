@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import * as matchingApi from '@/api/hr/matching'
-import type { MatchResult, MatchRequestParams } from '@/api/hr/matching'
+import type { MatchResultItem, CandidateMatchResultItem, MatchDetailResponse, MatchRequestParams } from '@/api/hr/matching'
 
 export const useMatchingStore = defineStore('hr-matching', () => {
-  const matches = ref<MatchResult[]>([])
+  const matches = ref<(MatchResultItem | CandidateMatchResultItem)[]>([])
+  const matchDetails = ref<MatchDetailResponse[]>([])
   const loading = ref(false)
 
-  async function matchCandidatesForPosition(positionId: string, params?: MatchRequestParams): Promise<MatchResult[]> {
+  async function matchCandidatesForPosition(positionId: string, params?: MatchRequestParams): Promise<MatchResultItem[]> {
     loading.value = true
     try {
       const result = await matchingApi.matchCandidatesForPosition(positionId, params)
@@ -21,7 +22,7 @@ export const useMatchingStore = defineStore('hr-matching', () => {
     }
   }
 
-  async function matchPositionsForCandidate(candidateId: string, params?: MatchRequestParams): Promise<MatchResult[]> {
+  async function matchPositionsForCandidate(candidateId: string, params?: MatchRequestParams): Promise<CandidateMatchResultItem[]> {
     loading.value = true
     try {
       const result = await matchingApi.matchPositionsForCandidate(candidateId, params)
@@ -39,7 +40,10 @@ export const useMatchingStore = defineStore('hr-matching', () => {
     loading.value = true
     try {
       const result = await matchingApi.getMatchResult(positionId)
-      if (result) matches.value = result.matches
+      if (result) {
+        matchDetails.value = result.items
+        matches.value = result.items
+      }
     } catch (err) {
       console.error('Failed to fetch match result:', err)
     } finally {
@@ -48,7 +52,7 @@ export const useMatchingStore = defineStore('hr-matching', () => {
   }
 
   return {
-    matches, loading,
+    matches, matchDetails, loading,
     matchCandidatesForPosition, matchPositionsForCandidate, fetchMatchResult,
   }
 })

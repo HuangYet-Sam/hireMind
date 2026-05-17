@@ -1,19 +1,17 @@
 import { hrGet, hrPost, hrPatch, hrDelete } from './client'
 import type { PaginatedResponse } from './client'
 
-// ─── Types ──────────────────────────────────────────────
-
 export interface Interview {
   id: string
   candidate_id: string
-  position_id: string
+  position_id: string | null
   round_number: number
-  interview_type: 'phone_screen' | 'technical' | 'behavioral' | 'case_study' | 'panel' | 'final'
-  status: 'scheduled' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled' | 'no_show'
-  scheduled_at: string
+  interview_type: string
+  status: string
+  scheduled_at: string | null
   duration_minutes: number
-  location: string
-  interviewer_ids: string[]
+  location: string | null
+  interviewer_ids: string[] | null
   overall_score: number | null
   recommendation: string | null
   summary: string | null
@@ -24,44 +22,43 @@ export interface Interview {
 
 export interface CreateInterviewRequest {
   candidate_id: string
-  position_id: string
+  position_id?: string | null
   round_number?: number
-  interview_type: Interview['interview_type']
-  scheduled_at: string
+  interview_type?: string
+  scheduled_at?: string | null
   duration_minutes?: number
-  location?: string
-  interviewer_ids: string[]
+  location?: string | null
+  interviewer_ids?: string[] | null
 }
 
 export interface UpdateInterviewRequest {
-  scheduled_at?: string
+  scheduled_at?: string | null
   duration_minutes?: number
-  location?: string
-  status?: Interview['status']
-  interviewer_ids?: string[]
+  location?: string | null
+  interviewer_ids?: string[] | null
+  status?: string
+  round_number?: number
+  interview_type?: string
 }
 
 export interface SubmitFeedbackRequest {
   score: number
   recommendation: string
-  strengths?: string
-  weaknesses?: string
-  comments?: string
-  skill_ratings?: Record<string, number>
+  strengths?: string | null
+  weaknesses?: string | null
+  comments?: string | null
+  skill_ratings?: Record<string, number> | null
 }
 
 export interface InterviewListParams {
   page?: number
   page_size?: number
-  status?: Interview['status']
   candidate_id?: string
   position_id?: string
-  interview_type?: Interview['interview_type']
+  interviewer_id?: string
   date_from?: string
   date_to?: string
 }
-
-// ─── API Functions ──────────────────────────────────────
 
 export async function listInterviews(params?: InterviewListParams): Promise<PaginatedResponse<Interview>> {
   return hrGet<PaginatedResponse<Interview>>('/interviews', params as Record<string, string | number>)
@@ -88,7 +85,15 @@ export async function submitFeedback(id: string, feedback: SubmitFeedbackRequest
   return hrPost<Interview>(`/interviews/${id}/feedback`, feedback)
 }
 
-// TODO: backend not yet implemented
 export async function getInterviewCalendar(startDate: string, endDate: string): Promise<Interview[]> {
   return hrGet<Interview[]>('/interviews/calendar', { date_from: startDate, date_to: endDate })
+}
+
+export async function generateAiQuestions(payload: {
+  position: Record<string, unknown>
+  candidate: Record<string, unknown>
+  interview_type?: string
+  num_questions?: number
+}): Promise<unknown> {
+  return hrPost('/interviews/ai/questions', payload)
 }

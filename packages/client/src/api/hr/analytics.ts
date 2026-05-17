@@ -1,7 +1,5 @@
 import { hrGet } from './client'
 
-// ─── Types ──────────────────────────────────────────────
-
 export interface DashboardData {
   open_positions: number
   candidates_in_pipeline: number
@@ -41,8 +39,6 @@ export interface AnalyticsParams {
   position_id?: string
 }
 
-// ─── API Functions ──────────────────────────────────────
-
 export async function getDashboardOverview(params?: AnalyticsParams): Promise<DashboardData> {
   return hrGet<DashboardData>('/analytics/dashboard', params as Record<string, string>)
 }
@@ -59,7 +55,6 @@ export async function getTimeToHire(params?: AnalyticsParams & { group_by?: stri
   return hrGet<TimeToHirePeriod[]>('/analytics/time-to-hire', params as Record<string, string>)
 }
 
-// TODO: backend not yet implemented
 export async function getPositionMetrics(params?: AnalyticsParams): Promise<unknown[]> {
   return hrGet<unknown[]>('/analytics/positions', params as Record<string, string>)
 }

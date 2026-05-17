@@ -42,7 +42,7 @@ async function handleMatch() {
     <NSpin :show="matchingStore.loading">
       <div v-if="matchingStore.matches.length" class="match-matrix">
         <NGrid :cols="1" :y-gap="12">
-          <NGridItem v-for="match in matchingStore.matches" :key="match.id">
+          <NGridItem v-for="match in matchingStore.matches" :key="match.candidate_id || match.position_id">
             <NCard size="small" class="match-row">
               <div class="match-info">
                 <span class="candidate-name">{{ match.candidate_name }}</span>
@@ -55,8 +55,11 @@ async function handleMatch() {
                 />
                 <span class="score-text">{{ Math.round(match.overall_score * 100) }}%</span>
               </div>
-              <div v-if="match.suggestions?.length" class="match-explanation">
-                {{ match.suggestions.join('；') }}
+              <div v-if="match.explanation" class="match-explanation">
+                {{ match.explanation }}
+              </div>
+              <div v-else-if="'missing_skills' in match && match.missing_skills?.length" class="match-explanation">
+                缺失技能：{{ match.missing_skills.join('；') }}
               </div>
             </NCard>
           </NGridItem>
