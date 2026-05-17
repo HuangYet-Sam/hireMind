@@ -41,6 +41,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > Commit: `50e2abc` — fix(frontend): matching params, analytics unwrap, offers reject
 
+### Documentation
+
+- **API_ENDPOINTS.md**: Comprehensive Tasks API documentation — data model, task types, status lifecycle diagram, request/response examples for all 5 endpoints. Added detailed authentication section covering middleware stack, JWT config, API key auth, RBAC role hierarchy, and per-module RBAC summary.
+- **docs/api/endpoints-crud.md**: Section 13 (AI任务中心) rewritten to reflect actual `/api/v1/ai-tasks` implementation. Marked PRD-designed endpoints with implementation status (✅/❌). Added task type enum, status lifecycle, data model table, and request/response examples.
+- **docs/api/auth-and-permissions.md**: New Section 3 "已实现中间件栈" documenting AuthMiddleware, RBACMiddleware, AuditLogMiddleware, JWT config parameters, `require_role()` dependency injection, `CurrentUser` dependency, DDL vs middleware role naming discrepancy, and middleware execution order.
+
 ---
 
 ## [0.1.0] - 2025-05-01

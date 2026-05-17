@@ -93,11 +93,161 @@ Token结构：
 
 ---
 
-## 3. 技术实现要点
+## 3. 已实现中间件栈
+
+> **Phase 2-3 实现状态** — 以下为 `packages/api/app/main.py` 中注册的中间件。
+> 执行顺序（外→内）：`AuditLogMiddleware` → `RBACMiddleware` → `AuthMiddleware`
+
+### 3.1 AuthMiddleware（JWT / API Key 认证）
+
+**源码**: `packages/api/app/middleware/auth.py`
+
+拦截所有非公开路由的请求，验证身份后注入 `request.state` 属性：
+
+| 注入属性 | JWT模式 | API Key模式 |
+|---------|---------|------------|
+| `user_id` | JWT `sub` claim | `"api_user"` |
+| `tenant_id` | JWT `tenant_id` claim | `X-Tenant-Id` header |
+| `role` | JWT `role` claim | `"admin"` |
+
+**三种认证方式**：
+
+1. **JWT Bearer Token** — `Authorization: Bearer <token>`，使用 `PyJWT` 解码，配置项见下表
+2. **API Key** — `X-API-Key: <key>` + `X-Tenant-Id: <tenant_id>`，分配 `admin` 角色
+3. ~~**Dev模式** — `dev_user` 自动注入（已在 v0.2.0 移除）~~
+
+**公开路径（无需认证）**：
+
+| 路径 | 说明 |
+|------|------|
+| `/health` | 健康检查 |
+| `/api/docs` | Swagger UI |
+| `/api/redoc` | ReDoc 文档 |
+| `/api/openapi.json` | OpenAPI 规范 |
+| 所有 `OPTIONS` 请求 | CORS 预检 |
+
+**错误响应**：
+- `401 {"detail": "Token expired"}` — JWT 过期
+- `401 {"detail": "Invalid token"}` — JWT 签名无效或格式错误
+- `401 {"detail": "Authentication required"}` — 无认证信息
+
+### 3.2 JWT 配置参数
+
+**源码**: `packages/api/app/config.py`（Pydantic Settings，通过环境变量或 `.env` 加载）
+
+| 环境变量 | 默认值 | 描述 |
+|----------|--------|------|
+| `JWT_SECRET_KEY` | `change-me-in-production` | HMAC签名密钥（⚠️ 生产环境必须更改） |
+| `JWT_ALGORITHM` | `HS256` | JWT签名算法 |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Access Token 有效期（分钟） |
+| `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh Token 有效期（天） |
+
+**JWT Token 结构**：
+```json
+{
+  "sub": "user-uuid",
+  "tenant_id": "company-a",
+  "role": "recruiter",
+  "exp": 1715385600
+}
+```
+
+### 3.3 RBACMiddleware（角色权限控制）
+
+**源码**: `packages/api/app/middleware/rbac.py`
+
+**角色层级**（索引越大权限越高）：
+
+```
+viewer(0) < recruiter(1) < hr_manager(2) < admin(3)
+```
+
+**路径规则**（`RBAC_RULES` 字典）：
+
+| 路径前缀 | 最低角色 |
+|---------|---------|
+| `/api/v1/analytics` | `hr_manager` |
+| `/api/v1/offers` | `hr_manager` |
+
+中间件通过路径前缀匹配，判断用户角色层级是否满足要求。
+不匹配任何规则的路径，所有已认证用户均可访问。
+
+**错误响应**：
+- `403 {"detail": "Insufficient permissions"}` — 角色不足
+- 同时记录 WARNING 日志：`RBAC denied: user_role=X, required=Y, path=Z`
+
+### 3.4 require_role() 依赖注入
+
+**源码**: `packages/api/app/dependencies.py`
+
+除中间件层外，各路由可通过 `require_role()` 在端点级别精细化控制写操作权限：
+
+```python
+from app.dependencies import require_role
+
+# 仅 recruiter/hr_manager/admin 可创建
+@router.post("/", dependencies=[Depends(require_role("recruiter", "hr_manager", "admin"))])
+async def create_position(...): ...
+```
+
+**当前使用 require_role() 的路由**：
+- `positions` — POST, PATCH, DELETE
+- `candidates` — POST, PATCH, DELETE, stage
+- `interviews` — POST, PATCH, DELETE, feedback
+- `offers` — POST, PATCH, approve, send
+
+### 3.5 CurrentUser 依赖
+
+**源码**: `packages/api/app/dependencies.py`
+
+所有需认证端点通过 `CurrentUserDep` 获取当前用户：
+
+```python
+async def get_current_user(request: Request) -> CurrentUser:
+    user_id = request.state.user_id      # AuthMiddleware 注入
+    tenant_id = request.state.tenant_id
+    role = request.state.role
+    return CurrentUser(user_id, tenant_id, role)
+```
+
+`CurrentUser` 对象属性：`user_id`, `tenant_id`, `role`
+
+### 3.6 数据库 DDL 角色约束
+
+**源码**: `packages/api/app/models/user.py`
+
+数据库层 `users.role` 字段使用 ENUM 约束：
+
+| DDL层 ENUM | 中间件层级 | 说明 |
+|-----------|----------|------|
+| `hr_admin` | `admin` | DDL使用 `hr_admin`，中间件使用 `admin` |
+| — | `hr_manager` | 仅中间件层存在 |
+| `recruiter` | `recruiter` | 一致 |
+| — | `viewer` | 仅中间件层存在（默认角色） |
+
+> ⚠️ **注意**：DDL层的 `hr_admin` 与中间件层的 `admin` 存在命名不一致，
+> 当前通过 API Key 模式自动赋予 `admin` 角色规避此问题。
+> 种子数据（`main.py`）创建的用户角色为 `hr_admin`。
+
+### 3.7 中间件执行顺序
+
+```
+请求 → AuditLogMiddleware → RBACMiddleware → AuthMiddleware → FastAPI路由
+         (审计日志)           (角色检查)         (身份验证)
+```
+
+在 `main.py` 中的注册顺序（Starlette middleware 栈，最后注册的最先执行）：
+```python
+app.add_middleware(AuditLogMiddleware)   # 外层：审计
+app.add_middleware(RBACMiddleware)        # 中层：RBAC
+app.add_middleware(AuthMiddleware)        # 内层：认证（最先执行）
+```
+
+## 4. PRD设计态技术实现要点
 
 > **PRD来源**：§2.5 技术实现要点
 
-### 3.1 面试反馈表单（JWT Token安全机制）
+### 4.1 面试反馈表单（JWT Token安全机制）
 
 ```
 1. HR创建面试时，系统为每位面试官生成 JWT feedback_tokens（JSONB数组，每项含interview_id+interviewer_id+exp签名校验，有效期24小时）
@@ -109,7 +259,7 @@ Token结构：
 7. 每次Token验证/提交记录访问日志（IP/UA/时间）
 ```
 
-### 3.2 IM审批（Agent解析机制 + 身份验证）
+### 4.2 IM审批（Agent解析机制 + 身份验证）
 
 ```
 1. HR发起审批 → Agent通过IM向审批人发送消息（含审批摘要 + 6位一次性验证码）
@@ -121,7 +271,7 @@ Token结构：
 5. 验证码无效/过期 → Agent提示"验证码无效，请查看最新审批消息中的验证码"
 ```
 
-### 3.3 AgentContext安全条款
+### 4.3 AgentContext安全条款
 
 > ⚠️ **安全约束**：Agent→Tool→Service调用链的身份基石，确保不可伪造、不可篡改。
 
@@ -134,11 +284,11 @@ Token结构：
 
 ---
 
-## 4. IM发送者身份验证机制（P0-07安全修复）
+## 5. IM发送者身份验证机制（P0-07安全修复）
 
 > ⚠️ **安全修复**：IM审批需验证发送者身份，防止冒充审批。
 
-### 4.1 IM发送者ID→系统用户映射
+### 5.1 IM发送者ID→系统用户映射
 
 | IM平台 | 发送者标识 | 映射方式 | 存储 |
 |--------|----------|---------|------|
@@ -163,14 +313,14 @@ CREATE TABLE im_user_bindings (
 );
 ```
 
-### 4.2 审批验证码机制
+### 5.2 审批验证码机制
 
 - 6位一次性验证码（数字），存储于 Redis `approval:otp:{approval_id}:{im_user_id}`，TTL 30分钟
 - 审批消息模板更新：`📋 Offer审批 #{id}\n...\n验证码：{6位码}\n请回复：同意+验证码 / 拒绝+验证码`
 - 验证码校验通过后立即从Redis删除（一次性使用）
 - Agent解析回复时先校验验证码，验证码不匹配则拒绝操作
 
-### 4.3 高风险操作二次验证
+### 5.3 高风险操作二次验证
 
 - 触发条件：Offer月薪 > 50,000 元（阈值可配置）
 - 二次验证方式：SMS验证码（4位），发送至审批人绑定的手机号
@@ -178,11 +328,11 @@ CREATE TABLE im_user_bindings (
 
 ---
 
-## 5. 安全要求总表
+## 6. 安全要求总表
 
 > **PRD来源**：§11.2 安全要求
 
-### 5.1 数据分类分级标准（P1-35安全修复，个保法第51条要求）
+### 6.1 数据分类分级标准（P1-35安全修复，个保法第51条要求）
 
 | 级别 | 分类 | 典型数据 | 存储要求 | 访问控制 | 操作要求 |
 |------|------|---------|---------|---------|---------|
@@ -191,14 +341,14 @@ CREATE TABLE im_user_bindings (
 | **L3 敏感** | 个人敏感信息 | 候选人PII（姓名、手机、邮箱、身份证号） | AES-256加密存储，密钥独立管理 | 最小权限+按需解密+脱敏展示 | **必须记录审计日志**（谁在何时访问了谁的PII） |
 | **L4 机密** | 高敏感业务数据 | 薪资、Offer详情、绩效评估、合同条款 | AES-256加密存储+独立密钥+MinIO加密桶 | 严格RBAC+字段级权限控制 | **需双人审批**（至少2名授权人员确认后方可查看/导出） |
 
-### 5.2 各级别操作要求细则
+### 6.2 各级别操作要求细则
 
 - **L3审计日志**：每次加密数据的解密操作、PII字段访问、批量导出均需记录 `{operator_id, target_entity, fields_accessed, timestamp, purpose}`
 - **L4双人审批**：薪资/Offer等L4数据的查看、修改、导出操作需发起审批流，至少1名HR+1名Admin同时授权；审批记录写入 `audit_logs`（source=`l4_approval`）
 - **级别升级**：当数据关联场景升级（如面试评价关联到具体候选人PII），自动提升为最高涉及级别
 - **定期核查**：每季度由合规负责人核查数据分级标签准确性，误分级数据限期修正
 
-### 5.3 分级实现矩阵（P0-01安全修复）
+### 6.3 分级实现矩阵（P0-01安全修复）
 
 | 级别 | DDL存储层 | API传输层 | 前端展示层 | 典型数据 |
 |------|----------|----------|----------|---------|
@@ -207,7 +357,7 @@ CREATE TABLE im_user_bindings (
 | **L3 敏感** | AES-256加密存储（DDL VARCHAR密文） | API脱敏返回（手机/邮箱掩码）+按需解密需审计 | 前端按需展示（权限+二次验证） | 候选人PII（姓名、手机、邮箱、身份证号） |
 | **L4 机密** | AES-256加密存储（DDL VARCHAR密文+独立密钥） | API双人审批后返回明文 | 前端掩码展示（`***`），HR Admin+审批后可见完整值 | Offer薪资、绩效评估、合同条款 |
 
-### 5.4 安全要求总表
+### 6.4 安全要求总表
 
 | 类别 | 要求 |
 |------|------|
@@ -224,7 +374,7 @@ CREATE TABLE im_user_bindings (
 | CSRF | **Double Submit Cookie模式**：FastAPI中间件校验CSRF Token。GET/OPTIONS/HEAD请求豁免。SSE端点通过Header认证 |
 | 多租户 | 所有查询强制带tenant_id，数据库行级隔离 |
 
-### 5.5 双路径安全保障（V3.5新增）
+### 6.5 双路径安全保障（V3.5新增）
 
 1. **AgentContext签名验证**：Tool层入口强制调用`ctx.verify_integrity()`，HMAC-SHA256签名校验tenant_id/user_id完整性
 2. **代码生成器安全校验**：SecurityValidationHook在生成后自动校验每个@AiCapability的permissions字段非空
@@ -232,7 +382,7 @@ CREATE TABLE im_user_bindings (
 4. **统一速率限制**：FastAPI中间件和Agent节流器共享Redis计数器
 5. **生成代码完整性校验**：启动时计算generated/目录SHA256哈希，与CI产出哈希比对
 
-### 5.6 审计增强
+### 6.6 审计增强
 
 - audit_logs表新增`agent_intent`字段（TEXT，Agent操作的原始意图描述）
 - audit_logs表新增`data_classification`字段（VARCHAR(4)，操作涉及的数据分级L1-L4）

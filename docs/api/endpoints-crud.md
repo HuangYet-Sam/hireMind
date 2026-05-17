@@ -161,19 +161,131 @@
 
 ---
 
-## 13. AI任务中心端点（确定性，50-200ms）
+## 13. AI任务中心端点
 
-| 方法 | 端点 | 描述 | 权限 |
+> **实现状态更新（Phase 2-3, v0.2.0）**
+>
+> 实际实现路径为 `/api/v1/ai-tasks`（非原设计的 `/api/v1/tasks`），共 5 个端点已上线。
+> 原设计中的 `stats`、`running`、`completed`、`queued`、`events` 端点暂未实现，
+> 可通过 `GET /?status=running` 等过滤查询替代。
+
+### 13.1 已实现端点
+
+| 方法 | 端点 | 描述 | 权限 | 状态 |
+|------|------|------|------|------|
+| POST | `/api/v1/ai-tasks` | 创建AI任务 | Any authenticated | ✅ 已实现 |
+| GET | `/api/v1/ai-tasks` | 任务列表（分页/筛选：status） | Any authenticated | ✅ 已实现 |
+| GET | `/api/v1/ai-tasks/:id` | 任务详情 | Any authenticated | ✅ 已实现 |
+| POST | `/api/v1/ai-tasks/:id/cancel` | 取消运行中/排队中的任务 | Any authenticated | ✅ 已实现 |
+| POST | `/api/v1/ai-tasks/:id/retry` | 重试失败任务 | Any authenticated | ✅ 已实现 |
+
+### 13.2 任务类型（TaskType）
+
+| 枚举值 | 描述 |
+|--------|------|
+| `resume_parse` | AI简历解析与信息提取 |
+| `candidate_match` | 岗位-候选人匹配度评分 |
+| `batch_score` | 批量候选人评分 |
+| `report_generate` | 生成招聘分析报告 |
+| `data_import` | 外部数据批量导入 |
+
+### 13.3 任务状态生命周期（TaskStatus）
+
+```
+                    ┌──────────┐
+                    │ pending  │ ← (create / retry)
+                    └────┬─────┘
+                         │ (worker picks up)
+                    ┌────▼─────┐
+            ┌───────│ running  │───────┐
+            │       └────┬─────┘       │
+            │ (cancel)   │ (complete)  │ (error)
+       ┌────▼────┐  ┌────▼─────┐  ┌───▼──────┐
+       │cancelled│  │completed │  │ failed   │
+       └────┬────┘  └──────────┘  └────┬─────┘
+            │                          │ (retry)
+            └──────────┐   ┌───────────┘
+                       ▼   ▼
+                   ┌──────────┐
+                   │ pending  │
+                   └──────────┘
+```
+
+- **cancel**：仅 `pending` / `running` 状态可取消 → `cancelled`
+- **retry**：仅 `failed` / `cancelled` 状态可重试 → `pending`（清空 `output_data` 和 `error_message`）
+
+### 13.4 AiTask 数据模型
+
+**源码**: `packages/api/app/models/ai_task.py`
+
+| 字段 | 类型 | 约束 | 描述 |
 |------|------|------|------|
-| GET | `/api/v1/tasks` | 任务列表（分页/筛选：状态/类型/时间） | HR, Admin |
-| GET | `/api/v1/tasks/:id` | 任务详情+进度百分比+子步骤 | HR, Admin |
-| POST | `/api/v1/tasks/:id/cancel` | 取消运行中/排队中的任务 | HR, Admin |
-| GET | `/api/v1/tasks/stats` | 任务统计（运行中/排队/已完成/失败） | HR, Admin |
-| GET | `/api/v1/tasks/running` | 运行中任务列表 | HR |
-| GET | `/api/v1/tasks/completed` | 已完成任务列表 | HR |
-| GET | `/api/v1/tasks/queued` | 排队中任务列表 | HR |
-| POST | `/api/v1/tasks/:id/retry` | 重试失败任务 | HR |
-| GET | `/api/v1/tasks/:id/events` | 任务事件SSE流 | HR |
+| `id` | UUID | PK, auto | 唯一任务ID |
+| `tenant_id` | VARCHAR(64) | NOT NULL, indexed | 租户隔离 |
+| `task_type` | ENUM(TaskType) | NOT NULL | 任务类型 |
+| `status` | ENUM(TaskStatus) | DEFAULT `pending` | 任务状态 |
+| `input_data` | TEXT | nullable | JSON编码的任务输入 |
+| `output_data` | TEXT | nullable | JSON编码的任务输出 |
+| `error_message` | TEXT | nullable | 失败时的错误描述 |
+| `created_by` | VARCHAR(64) | nullable | 创建者user_id |
+| `created_at` | TIMESTAMPTZ | server_default now() | 创建时间 |
+| `updated_at` | TIMESTAMPTZ | server_default now(), onupdate | 更新时间 |
+
+### 13.5 请求/响应示例
+
+**创建任务**:
+```json
+POST /api/v1/ai-tasks/
+{
+  "task_type": "resume_parse",
+  "input_data": "{\"resume_id\": \"550e8400-...\"}"   // 可选
+}
+→ 201 Created
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "tenant_id": "company-a",
+  "task_type": "resume_parse",
+  "status": "pending",
+  "input_data": "{\"resume_id\": \"550e8400-...\"}",
+  "output_data": null,
+  "error_message": null,
+  "created_by": "user-123",
+  "created_at": "2025-05-17T10:30:00Z",
+  "updated_at": "2025-05-17T10:30:00Z"
+}
+```
+
+**列表查询**:
+```
+GET /api/v1/ai-tasks/?status=running&page=1&page_size=20
+→ 200 OK
+{
+  "items": [...],
+  "total": 5,
+  "page": 1,
+  "page_size": 20,
+  "pages": 1
+}
+```
+
+**取消/重试错误响应**:
+```json
+→ 404  {"detail": "Task not found"}
+→ 409  {"detail": "Cannot cancel task in 'completed' state"}
+→ 409  {"detail": "Cannot retry task in 'running' state"}
+```
+
+### 13.6 原PRD设计（待实现）
+
+> 以下端点为PRD原设计，尚未实现，可通过列表过滤替代部分功能。
+
+| 方法 | 端点 | 描述 | 权限 | 状态 |
+|------|------|------|------|------|
+| GET | `/api/v1/tasks/stats` | 任务统计（运行中/排队/已完成/失败） | HR, Admin | ❌ 未实现 |
+| GET | `/api/v1/tasks/running` | 运行中任务列表 | HR | ❌ 用 `?status=running` 替代 |
+| GET | `/api/v1/tasks/completed` | 已完成任务列表 | HR | ❌ 用 `?status=completed` 替代 |
+| GET | `/api/v1/tasks/queued` | 排队中任务列表 | HR | ❌ 用 `?status=pending` 替代 |
+| GET | `/api/v1/tasks/:id/events` | 任务事件SSE流 | HR | ❌ 未实现 |
 
 ---
 

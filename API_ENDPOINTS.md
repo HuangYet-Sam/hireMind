@@ -161,6 +161,212 @@
 | POST | `/{task_id}/cancel` | Cancel a pending or running task | Required | Any authenticated user |
 | POST | `/{task_id}/retry` | Retry a failed task | Required | Any authenticated user |
 
+### Task Types
+
+| Type | Description |
+|------|-------------|
+| `resume_parse` | AI-powered resume parsing and information extraction |
+| `candidate_match` | Position-candidate compatibility scoring |
+| `batch_score` | Batch scoring of multiple candidates against a position |
+| `report_generate` | Generate recruitment analytics report |
+| `data_import` | Bulk data import from external sources |
+
+### Task Status Lifecycle
+
+```
+                    ┌──────────┐
+                    │ pending  │ ← (create / retry)
+                    └────┬─────┘
+                         │ (worker picks up)
+                    ┌────▼─────┐
+            ┌───────│ running  │───────┐
+            │       └────┬─────┘       │
+            │ (cancel)   │ (complete)  │ (error)
+       ┌────▼────┐  ┌────▼─────┐  ┌───▼──────┐
+       │cancelled│  │completed │  │ failed   │
+       └────┬────┘  └──────────┘  └────┬─────┘
+            │                          │ (retry)
+            └──────────┐   ┌───────────┘
+                       ▼   ▼
+                   ┌──────────┐
+                   │ pending  │
+                   └──────────┘
+```
+
+### AiTask Data Model
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Unique task identifier |
+| `tenant_id` | string | Tenant isolation scope |
+| `task_type` | enum | One of: `resume_parse`, `candidate_match`, `batch_score`, `report_generate`, `data_import` |
+| `status` | enum | One of: `pending`, `running`, `completed`, `failed`, `cancelled` |
+| `input_data` | string? | JSON-encoded input payload for the task |
+| `output_data` | string? | JSON-encoded result produced on completion |
+| `error_message` | string? | Error description if task failed |
+| `created_by` | string? | User ID of the task creator |
+| `created_at` | datetime | Timestamp of creation |
+| `updated_at` | datetime | Timestamp of last update |
+
+### Create Task
+
+```
+POST /api/v1/ai-tasks/
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "task_type": "resume_parse",
+  "input_data": "{\"resume_id\": \"550e8400-e29b-41d4-a716-446655440000\"}"
+}
+
+→ 201 Created
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "tenant_id": "company-a",
+  "task_type": "resume_parse",
+  "status": "pending",
+  "input_data": "{\"resume_id\": \"550e8400-e29b-41d4-a716-446655440000\"}",
+  "output_data": null,
+  "error_message": null,
+  "created_by": "user-123",
+  "created_at": "2025-05-17T10:30:00Z",
+  "updated_at": "2025-05-17T10:30:00Z"
+}
+```
+
+### List Tasks
+
+```
+GET /api/v1/ai-tasks/?status=running&page=1&page_size=20
+Authorization: Bearer <token>
+
+→ 200 OK
+{
+  "items": [ ...AiTaskResponse... ],
+  "total": 5,
+  "page": 1,
+  "page_size": 20,
+  "pages": 1
+}
+```
+
+**Query Parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `status` | string | null (all) | Filter by status: `pending`, `running`, `completed`, `failed`, `cancelled` |
+| `page` | int | 1 | Page number (≥1) |
+| `page_size` | int | 20 | Items per page (1–100) |
+
+### Cancel Task
+
+```
+POST /api/v1/ai-tasks/{task_id}/cancel
+Authorization: Bearer <token>
+
+→ 200 OK  (task status → cancelled)
+→ 404 Not Found  {"detail": "Task not found"}
+→ 409 Conflict   {"detail": "Cannot cancel task in 'completed' state"}
+```
+
+Only tasks in `pending` or `running` status can be cancelled.
+
+### Retry Task
+
+```
+POST /api/v1/ai-tasks/{task_id}/retry
+Authorization: Bearer <token>
+
+→ 200 OK  (task status → pending, error_message/output_data cleared)
+→ 404 Not Found  {"detail": "Task not found"}
+→ 409 Conflict   {"detail": "Cannot retry task in 'running' state"}
+```
+
+Only tasks in `failed` or `cancelled` status can be retried. Retry resets the task to `pending` and clears `output_data` and `error_message`.
+
+---
+
+## Authentication Details
+
+### Middleware Stack
+
+All `/api/v1/*` requests pass through three middleware layers (outermost first):
+
+1. **AuthMiddleware** — Validates JWT / API key, injects `user_id`, `tenant_id`, `role` into `request.state`
+2. **RBACMiddleware** — Enforces role-based path rules
+3. **AuditLogMiddleware** — Records write operations for auditing
+
+### JWT Authentication
+
+```
+Authorization: Bearer <token>
+```
+
+The JWT payload contains:
+
+| Claim | Description |
+|-------|-------------|
+| `sub` | User ID |
+| `tenant_id` | Tenant scope for data isolation |
+| `role` | User role: `viewer`, `recruiter`, `hr_manager`, `admin` |
+| `exp` | Expiration timestamp |
+
+**Configuration** (via env vars):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_SECRET_KEY` | `change-me-in-production` | HMAC signing key |
+| `JWT_ALGORITHM` | `HS256` | Signing algorithm |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Access token lifetime |
+| `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token lifetime |
+
+### API Key Authentication
+
+```
+X-API-Key: <key>
+X-Tenant-Id: <tenant_id>
+```
+
+API key requests are assigned `admin` role. The `X-Tenant-Id` header is required to set the tenant scope.
+
+### Public Endpoints
+
+The following paths bypass authentication entirely:
+
+- `GET /health` — Health check
+- `GET /api/docs` — Swagger UI
+- `GET /api/redoc` — ReDoc
+- `GET /api/openapi.json` — OpenAPI spec
+- All `OPTIONS` requests (CORS preflight)
+
+### RBAC Role Hierarchy
+
+```
+viewer < recruiter < hr_manager < admin
+```
+
+| Path Prefix | Minimum Role |
+|-------------|-------------|
+| `/api/v1/analytics` | `hr_manager` |
+| `/api/v1/offers` | `hr_manager` |
+
+Additionally, individual routers enforce fine-grained RBAC via the `require_role()` dependency on write operations (POST/PATCH/DELETE), restricting access to `recruiter`, `hr_manager`, or `admin` roles.
+
+### RBAC by Endpoint
+
+| Module | Read (GET) | Write (POST/PATCH/DELETE) | Notes |
+|--------|-----------|--------------------------|-------|
+| Positions | Any authenticated | `recruiter`+ | — |
+| Candidates | Any authenticated | `recruiter`+ | Stage advance also restricted |
+| Resumes | Any authenticated | Any authenticated | Upload and parse open to all |
+| Matching | Any authenticated | N/A | POST endpoints for triggering |
+| Interviews | Any authenticated | `recruiter`+ | Feedback also restricted |
+| Offers | `hr_manager`+ (middleware) | `hr_manager`+ | Approve requires `hr_manager`+ |
+| Analytics | `hr_manager`+ (middleware) | N/A | Read-only endpoints |
+| Departments | Any authenticated | Any authenticated | — |
+| AI Tasks | Any authenticated | Any authenticated | — |
+
 ---
 
 ## Summary Statistics
@@ -178,6 +384,8 @@
 | Departments | 6 | Yes | — |
 | AI Tasks | 5 | Yes | — |
 | **Total** | **52** | | |
+
+> **Note**: Counts reflect only **implemented** endpoints. The PRD design (`docs/api/endpoints-crud.md`) specifies additional endpoints (dashboard, onboarding, share-links, proactive AI) planned for future phases.
 
 ---
 
@@ -219,4 +427,5 @@ List endpoints accept `page` (default 1) and `page_size` (default 20, max 100) q
 
 ---
 
-*Last updated: 2025-05-17 · Generated from router source files in `packages/api/app/routers/`*
+*Last updated: 2026-05-17 · Generated from router source files in `packages/api/app/routers/`*
+*Covers implementation through Phase 2-3 (v0.2.0). See `docs/api/endpoints-crud.md` for PRD-planned endpoints.*

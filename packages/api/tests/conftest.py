@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
-from sqlalchemy import select
+from sqlalchemy import Enum as SAEnum, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
@@ -55,6 +55,11 @@ def _compile_uuid_sqlite(type_, compiler, **kw):
 
 @compiles(JSONB, "sqlite")
 def _compile_jsonb_sqlite(type_, compiler, **kw):
+    return "TEXT"
+
+
+@compiles(SAEnum, "sqlite")
+def _compile_saenum_sqlite(type_, compiler, **kw):
     return "TEXT"
 
 
