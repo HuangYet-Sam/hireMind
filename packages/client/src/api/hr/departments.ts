@@ -16,7 +16,8 @@ export interface Department {
   manager_name: string | null
   created_at: string
   updated_at: string
-  children: DepartmentTreeNode[]
+  // NOTE: 'children' is NOT returned by the flat list endpoint (GET /departments).
+  // It is only present in the tree endpoint (GET /departments/tree → DepartmentTreeNode).
 }
 
 export interface DepartmentTreeNode {

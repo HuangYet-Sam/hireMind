@@ -60,10 +60,16 @@ export async function getTimeToHire(params?: AnalyticsParams & { group_by?: stri
   return hrGet<TimeToHirePeriod[]>('/analytics/time-to-hire', params as Record<string, string>)
 }
 
+/**
+ * Position-level metrics.
+ * NOTE: The backend has no /analytics/positions endpoint.
+ * This function will always fall back to [] until the endpoint is added.
+ */
 export async function getPositionMetrics(params?: AnalyticsParams): Promise<unknown[]> {
   try {
     return await hrGet<unknown[]>('/analytics/positions', params as Record<string, string>)
   } catch {
+    // Backend does not implement this endpoint yet — return empty fallback
     return []
   }
 }

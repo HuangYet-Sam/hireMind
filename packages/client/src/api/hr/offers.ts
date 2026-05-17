@@ -84,8 +84,18 @@ export async function approveOffer(id: string, comment?: string): Promise<Offer>
   return hrPost<Offer>(`/offers/${id}/approve`, { comment })
 }
 
+/**
+ * Reject an offer.
+ * Backend has no dedicated /reject endpoint.
+ * We PATCH the offer with notes containing the rejection reason.
+ * NOTE: Backend OfferUpdate only applies to draft-status offers.
+ * If the backend adds a reject flow (e.g. status → 'rejected' + response_note),
+ * update this to send { status: 'rejected', response_note: comment }.
+ */
 export async function rejectOffer(id: string, comment?: string): Promise<Offer> {
-  return await hrPatch<Offer>(`/offers/${id}`, { notes: comment ?? 'Rejected' })
+  return await hrPatch<Offer>(`/offers/${id}`, {
+    notes: comment ?? 'Rejected',
+  })
 }
 
 export async function sendOffer(id: string): Promise<Offer> {
