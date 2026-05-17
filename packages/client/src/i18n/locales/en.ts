@@ -103,6 +103,7 @@ export default {
     hrOffers: 'Offers',
     hrAnalytics: 'Recruitment Analytics',
     hrTasks: 'AI Tasks',
+    hrBackToMain: 'Back to Main',
     connected: 'Connected',
     disconnected: 'Disconnected',
     collapse: 'Collapse menu',

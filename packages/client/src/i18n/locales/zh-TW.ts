@@ -108,6 +108,7 @@ export default {
     hrOffers: 'Offer管理',
     hrAnalytics: '招聘分析',
     hrTasks: 'AI任務中心',
+    hrBackToMain: '返回主介面',
     connected: '已連線',
     disconnected: '未連線',
     collapse: '收起選單',

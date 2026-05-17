@@ -103,6 +103,7 @@ export default {
     hrOffers: 'Angebote',
     hrAnalytics: 'Analytik',
     hrTasks: 'KI-Aufgaben',
+    hrBackToMain: 'Zurück zum Hauptmenü',
     logout: 'Abmelden',
     nodeVersionWarning: 'Node.js v{version} erkannt. Bitte aktualisieren Sie auf Version 23 oder neuer.',
     changelog: 'Anderungsprotokoll',

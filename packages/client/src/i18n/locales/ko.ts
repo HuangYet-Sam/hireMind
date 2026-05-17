@@ -103,6 +103,7 @@ export default {
     hrOffers: '오퍼',
     hrAnalytics: '채용 분석',
     hrTasks: 'AI 작업',
+    hrBackToMain: '메인으로 돌아가기',
     logout: '로그아웃',
     nodeVersionWarning: 'Node.js v{version}이 감지되었습니다. 버전 23 이상으로 업그레이드하세요.',
     changelog: '변경 이력',

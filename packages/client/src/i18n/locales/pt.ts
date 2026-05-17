@@ -103,6 +103,7 @@ export default {
     hrOffers: 'Ofertas',
     hrAnalytics: 'Análise de Recrutamento',
     hrTasks: 'Tarefas de IA',
+    hrBackToMain: 'Voltar ao início',
     logout: 'Sair',
     nodeVersionWarning: 'Node.js v{version} detectado. Atualize para a versao 23 ou posterior.',
     changelog: 'Registro de alteracoes',

@@ -103,6 +103,7 @@ export default {
     hrOffers: 'オファー',
     hrAnalytics: '採用分析',
     hrTasks: 'AIタスク',
+    hrBackToMain: 'メインに戻る',
     logout: 'ログアウト',
     nodeVersionWarning: 'Node.js v{version} が検出されました。バージョン23以降にアップグレードしてください。',
     changelog: '更新履歴',
