@@ -4,6 +4,8 @@ HireMind Configuration via Pydantic Settings.
 All sensitive values are loaded from environment variables or a `.env` file.
 """
 
+import sys
+
 from pydantic import Field, PostgresDsn, RedisDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,6 +23,7 @@ class Settings(BaseSettings):
     # ── Application ──────────────────────────────────────────
     APP_NAME: str = "HireMind"
     APP_VERSION: str = "0.1.0"
+    APP_ENV: str = "development"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
@@ -51,7 +54,7 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = False
 
     # ── JWT Authentication ───────────────────────────────────
-    JWT_SECRET_KEY: str = "change-me-in-production"
+    JWT_SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -80,6 +83,49 @@ class Settings(BaseSettings):
     # ── Pagination ───────────────────────────────────────────
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 100
+
+    def model_post_init(self, __context: object) -> None:
+        """Validate critical security settings after model initialization."""
+        super().model_post_init(__context)
+        self._validate_security()
+
+    def _validate_security(self) -> None:
+        """Fail-fast security validation for critical configuration values."""
+        errors: list[str] = []
+
+        # ── JWT_SECRET_KEY: always required ──
+        if not self.JWT_SECRET_KEY or self.JWT_SECRET_KEY == "change-me-in-production":
+            errors.append(
+                "JWT_SECRET_KEY is empty or still set to the default value "
+                "'change-me-in-production'. You MUST set a strong, unique "
+                "secret in your environment or .env file."
+            )
+
+        # ── Production-specific checks ──
+        if self.APP_ENV == "production":
+            if self.POSTGRES_PASSWORD == "hiremind_dev":
+                errors.append(
+                    "POSTGRES_PASSWORD is still the dev default 'hiremind_dev'. "
+                    "Set a strong password for production."
+                )
+            if self.MINIO_ACCESS_KEY == "minioadmin" or self.MINIO_SECRET_KEY == "minioadmin":
+                errors.append(
+                    "MinIO credentials are still the defaults ('minioadmin'). "
+                    "Set MINIO_ACCESS_KEY and MINIO_SECRET_KEY for production."
+                )
+            if self.DEBUG:
+                errors.append(
+                    "DEBUG must be False in production."
+                )
+            if not self.MINIO_SECURE:
+                errors.append(
+                    "MINIO_SECURE must be True in production (use TLS)."
+                )
+
+        if errors:
+            for err in errors:
+                print(f"[CONFIG ERROR] {err}", file=sys.stderr)
+            sys.exit(1)
 
     @property
     def async_database_url(self) -> str:

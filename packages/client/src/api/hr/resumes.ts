@@ -31,6 +31,7 @@ export interface ResumeListParams {
   page_size?: number
   candidate_id?: string
   status?: string
+  keyword?: string
 }
 
 export async function listResumes(params?: ResumeListParams): Promise<PaginatedResponse<Resume>> {

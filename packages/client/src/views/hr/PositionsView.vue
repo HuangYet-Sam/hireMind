@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NCard, NButton, NDataTable, NSpace, NInput, NSelect, NTag, useMessage } from 'naive-ui'
+import { NButton, NDataTable, NSpace, NInput, NSelect, NTag, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { usePositionStore } from '@/stores/hr/positions'
 import type { Position } from '@/api/hr/positions'

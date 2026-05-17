@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NCard, NButton, NDataTable, NInput, NSelect, NTag, NSpace, NSpin } from 'naive-ui'
+import { NButton, NDataTable, NInput, NSelect, NTag, NSpace, NSpin } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useResumeStore } from '@/stores/hr/resumes'
 import type { Resume } from '@/api/hr/resumes'
