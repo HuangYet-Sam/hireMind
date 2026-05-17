@@ -81,11 +81,16 @@ async def get_current_user(request: Request) -> CurrentUser:
     role = getattr(request.state, "role", None)
 
     if user_id is None:
-        user_id = "dev_user"
-        tenant_id = "default"
-        role = "admin"
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required",
+        )
 
-    return CurrentUser(user_id=user_id, tenant_id=tenant_id, role=role)
+    return CurrentUser(
+        user_id=user_id,
+        tenant_id=tenant_id or "default",
+        role=role or "viewer",
+    )
 
 
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]

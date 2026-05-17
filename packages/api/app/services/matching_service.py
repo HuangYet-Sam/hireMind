@@ -1,5 +1,6 @@
 """Matching Service — Phase 1 skill/experience scoring algorithm."""
 
+import asyncio
 from uuid import UUID
 
 from sqlalchemy import select, func
@@ -35,64 +36,23 @@ class MatchingService:
         exp_max = position.required_exp_max
 
         actual_min = min_score * 100
+
+        # Score all candidates in parallel using asyncio.gather
+        tasks = [
+            self._score_candidate_for_position(cand, position, position_skills, exp_min, exp_max)
+            for cand in candidates
+        ]
+        scored = await asyncio.gather(*tasks)
+
         results: list[dict] = []
-
-        for cand in candidates:
-            profile = cand.profile or {}
-            cand_skills = profile.get("skills", [])
-            if isinstance(cand_skills, dict):
-                cand_skills = list(cand_skills.keys())
-
-            skill_score, matched, missing = self._calculate_skill_score(
-                position_skills, cand_skills
-            )
-            exp_years = self._extract_experience_years(profile)
-            experience_score = self._calculate_experience_score(exp_years, exp_min, exp_max)
-            education_score = self._calculate_education_score(profile)
-            overall = skill_score * 0.4 + experience_score * 0.3 + education_score * 0.2 + 10.0
-            overall = min(100.0, overall)
-
-            # Try AI-enhanced scoring
-            ai_score = 0.0
-            ai_reasoning = ""
-            ai_result = None
-            try:
-                from app.services.ai_client import ai_client
-                position_info = {
-                    "title": position.title,
-                    "required_skills": position_skills,
-                    "description": getattr(position, 'description', None),
-                }
-                candidate_info = {
-                    "skills": cand_skills,
-                    "profile": profile,
-                }
-                ai_result = await ai_client.score_candidate_match(position_info, candidate_info)
-                if ai_result is not None:
-                    ai_score = ai_result.get("ai_score", 0)
-                    ai_reasoning = ai_result.get("ai_reasoning", "")
-                    # Blend: 70% algorithmic + 30% AI
-                    overall = overall * 0.7 + ai_score * 0.3
-                    overall = min(100.0, overall)
-            except Exception:
-                pass  # AI unavailable, use algorithmic score
-
+        for cand, result in zip(candidates, scored):
+            if result is None:
+                continue
+            overall = result["overall_score"]
             if overall < actual_min:
                 continue
-
-            result = {
-                "candidate_id": cand.id,
-                "candidate_name": self._extract_candidate_name(cand),
-                "overall_score": round(overall, 2),
-                "skill_score": round(skill_score, 2),
-                "experience_score": round(experience_score, 2),
-                "education_score": round(education_score, 2),
-                "matched_skills": matched,
-                "missing_skills": missing,
-                "explanation": self._build_explanation(matched, missing, overall),
-                "bonus_score": round(ai_score if ai_result else 10.0, 2),
-                "ai_reasoning": ai_reasoning,
-            }
+            result["candidate_id"] = cand.id
+            result["candidate_name"] = self._extract_candidate_name(cand)
             results.append(result)
             await self.save_match_result(
                 position_id=position_id,
@@ -123,61 +83,23 @@ class MatchingService:
 
         positions = await self._get_open_positions(tenant_id)
         actual_min = min_score * 100
+
+        # Score all positions in parallel using asyncio.gather
+        tasks = [
+            self._score_position_for_candidate(pos, cand_skills, profile)
+            for pos in positions
+        ]
+        scored = await asyncio.gather(*tasks)
+
         results: list[dict] = []
-
-        for pos in positions:
-            pos_skills = pos.required_skills or []
-            exp_min = pos.required_exp_min
-            exp_max = pos.required_exp_max
-
-            skill_score, matched, missing = self._calculate_skill_score(
-                pos_skills, cand_skills
-            )
-            exp_years = self._extract_experience_years(profile)
-            experience_score = self._calculate_experience_score(exp_years, exp_min, exp_max)
-            education_score = self._calculate_education_score(profile)
-            overall = skill_score * 0.4 + experience_score * 0.3 + education_score * 0.2 + 10.0
-            overall = min(100.0, overall)
-
-            # Try AI-enhanced scoring
-            ai_score = 0.0
-            ai_reasoning = ""
-            ai_result = None
-            try:
-                from app.services.ai_client import ai_client
-                position_info = {
-                    "title": pos.title,
-                    "required_skills": pos_skills,
-                    "description": getattr(pos, 'description', None),
-                }
-                candidate_info = {
-                    "skills": cand_skills,
-                    "profile": profile,
-                }
-                ai_result = await ai_client.score_candidate_match(position_info, candidate_info)
-                if ai_result is not None:
-                    ai_score = ai_result.get("ai_score", 0)
-                    ai_reasoning = ai_result.get("ai_reasoning", "")
-                    # Blend: 70% algorithmic + 30% AI
-                    overall = overall * 0.7 + ai_score * 0.3
-                    overall = min(100.0, overall)
-            except Exception:
-                pass  # AI unavailable, use algorithmic score
-
+        for pos, result in zip(positions, scored):
+            if result is None:
+                continue
+            overall = result["overall_score"]
             if overall < actual_min:
                 continue
-
-            result = {
-                "position_id": pos.id,
-                "position_title": pos.title,
-                "overall_score": round(overall, 2),
-                "skill_score": round(skill_score, 2),
-                "matched_skills": matched,
-                "missing_skills": missing,
-                "explanation": self._build_explanation(matched, missing, overall),
-                "bonus_score": round(ai_score if ai_result else 10.0, 2),
-                "ai_reasoning": ai_reasoning,
-            }
+            result["position_id"] = pos.id
+            result["position_title"] = pos.title
             results.append(result)
             await self.save_match_result(
                 position_id=pos.id,
@@ -189,6 +111,123 @@ class MatchingService:
         results.sort(key=lambda r: r["overall_score"], reverse=True)
         await self.db.flush()
         return results[:top_k]
+
+    # ── Parallel scoring helpers ──────────────────────────────────
+
+    async def _score_candidate_for_position(
+        self,
+        cand: Candidate,
+        position: Position,
+        position_skills: list,
+        exp_min,
+        exp_max,
+    ) -> dict | None:
+        """Score a single candidate against a position (for parallel execution)."""
+        profile = cand.profile or {}
+        cand_skills = profile.get("skills", [])
+        if isinstance(cand_skills, dict):
+            cand_skills = list(cand_skills.keys())
+
+        skill_score, matched, missing = self._calculate_skill_score(
+            position_skills, cand_skills
+        )
+        exp_years = self._extract_experience_years(profile)
+        experience_score = self._calculate_experience_score(exp_years, exp_min, exp_max)
+        education_score = self._calculate_education_score(profile)
+        overall = skill_score * 0.4 + experience_score * 0.3 + education_score * 0.2 + 10.0
+        overall = min(100.0, overall)
+
+        # Try AI-enhanced scoring
+        ai_score = 0.0
+        ai_reasoning = ""
+        ai_result = None
+        try:
+            from app.services.ai_client import ai_client
+            position_info = {
+                "title": position.title,
+                "required_skills": position_skills,
+                "description": getattr(position, 'description', None),
+            }
+            candidate_info = {
+                "skills": cand_skills,
+                "profile": profile,
+            }
+            ai_result = await ai_client.score_candidate_match(position_info, candidate_info)
+            if ai_result is not None:
+                ai_score = ai_result.get("ai_score", 0)
+                ai_reasoning = ai_result.get("ai_reasoning", "")
+                # Blend: 70% algorithmic + 30% AI
+                overall = overall * 0.7 + ai_score * 0.3
+                overall = min(100.0, overall)
+        except Exception:
+            pass  # AI unavailable, use algorithmic score
+
+        return {
+            "overall_score": round(overall, 2),
+            "skill_score": round(skill_score, 2),
+            "experience_score": round(experience_score, 2),
+            "education_score": round(education_score, 2),
+            "matched_skills": matched,
+            "missing_skills": missing,
+            "explanation": self._build_explanation(matched, missing, overall),
+            "bonus_score": round(ai_score if ai_result else 10.0, 2),
+            "ai_reasoning": ai_reasoning,
+        }
+
+    async def _score_position_for_candidate(
+        self,
+        pos: Position,
+        cand_skills: list,
+        profile: dict,
+    ) -> dict | None:
+        """Score a single position against a candidate (for parallel execution)."""
+        pos_skills = pos.required_skills or []
+        exp_min = pos.required_exp_min
+        exp_max = pos.required_exp_max
+
+        skill_score, matched, missing = self._calculate_skill_score(
+            pos_skills, cand_skills
+        )
+        exp_years = self._extract_experience_years(profile)
+        experience_score = self._calculate_experience_score(exp_years, exp_min, exp_max)
+        education_score = self._calculate_education_score(profile)
+        overall = skill_score * 0.4 + experience_score * 0.3 + education_score * 0.2 + 10.0
+        overall = min(100.0, overall)
+
+        # Try AI-enhanced scoring
+        ai_score = 0.0
+        ai_reasoning = ""
+        ai_result = None
+        try:
+            from app.services.ai_client import ai_client
+            position_info = {
+                "title": pos.title,
+                "required_skills": pos_skills,
+                "description": getattr(pos, 'description', None),
+            }
+            candidate_info = {
+                "skills": cand_skills,
+                "profile": profile,
+            }
+            ai_result = await ai_client.score_candidate_match(position_info, candidate_info)
+            if ai_result is not None:
+                ai_score = ai_result.get("ai_score", 0)
+                ai_reasoning = ai_result.get("ai_reasoning", "")
+                # Blend: 70% algorithmic + 30% AI
+                overall = overall * 0.7 + ai_score * 0.3
+                overall = min(100.0, overall)
+        except Exception:
+            pass  # AI unavailable, use algorithmic score
+
+        return {
+            "overall_score": round(overall, 2),
+            "skill_score": round(skill_score, 2),
+            "matched_skills": matched,
+            "missing_skills": missing,
+            "explanation": self._build_explanation(matched, missing, overall),
+            "bonus_score": round(ai_score if ai_result else 10.0, 2),
+            "ai_reasoning": ai_reasoning,
+        }
 
     async def get_latest_result(self, position_id: UUID, tenant_id: str) -> list[Match]:
         stmt = (

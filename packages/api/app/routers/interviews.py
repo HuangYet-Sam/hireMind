@@ -6,12 +6,12 @@ Endpoints for scheduling and managing interviews (面试).
 
 import math
 from datetime import datetime
-
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.dependencies import CurrentUserDep, DbSession, PaginationDep
+from app.dependencies import CurrentUser, CurrentUserDep, DbSession, PaginationDep, require_role
 from app.schemas.interview import (
     InterviewCreate,
     InterviewFeedbackCreate,
@@ -22,6 +22,8 @@ from app.schemas.interview import (
 from app.services.interview_service import InterviewService
 
 router = APIRouter()
+
+_RecruiterOrAbove = Annotated[CurrentUser, Depends(require_role("recruiter", "hr_manager", "admin"))]
 
 
 @router.post("/ai/questions", summary="Generate AI interview questions")
@@ -101,7 +103,7 @@ async def list_interviews(
 async def create_interview(
     payload: InterviewCreate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = InterviewService(db)
     try:
@@ -137,7 +139,7 @@ async def update_interview(
     interview_id: UUID,
     payload: InterviewUpdate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = InterviewService(db)
     try:
@@ -166,7 +168,7 @@ async def update_interview(
 async def cancel_interview(
     interview_id: UUID,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
     reason: str | None = Query(None, description="Cancellation reason"),
 ):
     service = InterviewService(db)
@@ -196,7 +198,7 @@ async def submit_feedback(
     interview_id: UUID,
     payload: InterviewFeedbackCreate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = InterviewService(db)
     try:

@@ -5,11 +5,12 @@ Endpoints for creating, approving, and managing job offers (Offer).
 """
 
 import math
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.dependencies import CurrentUserDep, DbSession, PaginationDep
+from app.dependencies import CurrentUser, CurrentUserDep, DbSession, PaginationDep, require_role
 from app.schemas.offer import (
     OfferApprove,
     OfferCreate,
@@ -20,6 +21,9 @@ from app.schemas.offer import (
 from app.services.offer_service import OfferService
 
 router = APIRouter()
+
+_HrManagerOrAbove = Annotated[CurrentUser, Depends(require_role("hr_manager", "admin"))]
+_RecruiterOrAbove = Annotated[CurrentUser, Depends(require_role("recruiter", "hr_manager", "admin"))]
 
 
 @router.post("/ai/salary-recommendation", summary="Generate AI salary recommendation")
@@ -88,7 +92,7 @@ async def list_offers(
 async def create_offer(
     payload: OfferCreate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = OfferService(db)
     try:
@@ -122,7 +126,7 @@ async def update_offer(
     offer_id: UUID,
     payload: OfferUpdate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = OfferService(db)
     try:
@@ -152,7 +156,7 @@ async def approve_offer(
     offer_id: UUID,
     payload: OfferApprove,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _HrManagerOrAbove,
 ):
     service = OfferService(db)
     try:
@@ -187,7 +191,7 @@ async def approve_offer(
 async def send_offer(
     offer_id: UUID,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = OfferService(db)
     try:

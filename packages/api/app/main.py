@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import (
+    ai_tasks,
     analytics,
     candidates,
     departments,
@@ -115,6 +116,7 @@ app.include_router(interviews.router, prefix="/api/v1/interviews", tags=["Interv
 app.include_router(offers.router, prefix="/api/v1/offers", tags=["Offers"])
 app.include_router(analytics.router, prefix="/api/v1/analytics", tags=["Analytics"])
 app.include_router(departments.router, prefix="/api/v1/departments", tags=["Departments"])
+app.include_router(ai_tasks.router, prefix="/api/v1/ai-tasks", tags=["AI Tasks"])
 
 
 # ── Root & Health Check ────────────────────────────────────────

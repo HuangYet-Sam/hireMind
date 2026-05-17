@@ -58,8 +58,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             request.state.tenant_id = request.headers.get("X-Tenant-Id", "default")
             request.state.role = "admin"
         else:
-            request.state.user_id = "dev_user"
-            request.state.tenant_id = "default"
-            request.state.role = "admin"
+            return Response(
+                content='{"detail":"Authentication required"}',
+                status_code=401,
+                media_type="application/json",
+            )
 
         return await call_next(request)

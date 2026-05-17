@@ -98,14 +98,18 @@ async def client(db_session):
         return dependencies.CurrentUser(
             user_id="test-user-id",
             tenant_id=TEST_TENANT_ID_STR,
-            role="hr_admin",
+            role="admin",
         )
 
     app.dependency_overrides[dependencies.get_db] = override_get_db
     app.dependency_overrides[dependencies.get_current_user] = override_get_current_user
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-API-Key": "test-key", "X-Tenant-Id": TEST_TENANT_ID_STR},
+    ) as ac:
         yield ac
 
     app.dependency_overrides.clear()

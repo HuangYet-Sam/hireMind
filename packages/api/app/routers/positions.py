@@ -5,11 +5,12 @@ Provides endpoints for managing job positions in the recruitment pipeline.
 """
 
 import math
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.dependencies import CurrentUserDep, DbSession, PaginationDep
+from app.dependencies import CurrentUser, CurrentUserDep, DbSession, PaginationDep, require_role
 from app.schemas.position import (
     PositionCreate,
     PositionListResponse,
@@ -19,6 +20,8 @@ from app.schemas.position import (
 from app.services.position_service import PositionService
 
 router = APIRouter()
+
+_RecruiterOrAbove = Annotated[CurrentUser, Depends(require_role("recruiter", "hr_manager", "admin"))]
 
 
 @router.get("/", response_model=PositionListResponse, summary="List positions")
@@ -58,7 +61,7 @@ async def list_positions(
 async def create_position(
     payload: PositionCreate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = PositionService(db)
     try:
@@ -96,7 +99,7 @@ async def update_position(
     position_id: UUID,
     payload: PositionUpdate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = PositionService(db)
     try:
@@ -129,7 +132,7 @@ async def update_position(
 async def delete_position(
     position_id: UUID,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     service = PositionService(db)
     try:

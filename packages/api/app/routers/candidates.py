@@ -7,10 +7,12 @@ Endpoints for managing candidates (候选人) throughout the recruitment process
 import math
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.dependencies import CurrentUserDep, DbSession, PaginationDep
+from app.dependencies import CurrentUser, CurrentUserDep, DbSession, PaginationDep, require_role
 from app.schemas.candidate import (
     CandidateCreate,
     CandidateListResponse,
@@ -20,6 +22,9 @@ from app.schemas.candidate import (
 from app.services.candidate_service import CandidateService
 
 router = APIRouter()
+
+# RBAC role requirements — Annotated type alias so FastAPI sees Depends exactly once
+_RecruiterOrAbove = Annotated[CurrentUser, Depends(require_role("recruiter", "hr_manager", "admin"))]
 
 
 class StageAdvanceRequest(BaseModel):
@@ -65,7 +70,7 @@ async def list_candidates(
 async def create_candidate(
     payload: CandidateCreate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     svc = CandidateService(db)
     try:
@@ -100,7 +105,7 @@ async def update_candidate(
     candidate_id: UUID,
     payload: CandidateUpdate,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     svc = CandidateService(db)
     candidate = await svc.update(
@@ -124,7 +129,7 @@ async def update_candidate(
 async def delete_candidate(
     candidate_id: UUID,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     svc = CandidateService(db)
     try:
@@ -145,7 +150,7 @@ async def advance_stage(
     candidate_id: UUID,
     body: StageAdvanceRequest,
     db: DbSession,
-    current_user: CurrentUserDep,
+    current_user: _RecruiterOrAbove,
 ):
     svc = CandidateService(db)
     try:

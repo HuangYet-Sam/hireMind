@@ -1,5 +1,6 @@
 """Import all models so Alembic can detect them."""
 
+from app.models.ai_task import AiTask  # noqa: F401
 from app.models.audit_log import AuditLog  # noqa: F401
 from app.models.candidate import Candidate  # noqa: F401
 from app.models.department import Department  # noqa: F401
