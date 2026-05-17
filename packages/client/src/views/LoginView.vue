@@ -23,7 +23,7 @@ const hasPasswordLogin = ref(false);
 
 // If already has a key, try to go to main page
 if (hasApiKey()) {
-  router.replace("/hermes/chat");
+  router.replace("/hr/dashboard");
 }
 
 onMounted(async () => {
@@ -68,7 +68,7 @@ async function handleTokenLogin() {
     }
 
     setApiKey(key);
-    router.replace("/hermes/chat");
+    router.replace("/hr/dashboard");
   } catch {
     errorMsg.value = t("login.connectionFailed");
   } finally {
@@ -88,7 +88,7 @@ async function handlePasswordLogin() {
   try {
     const sessionToken = await loginWithPassword(username.value.trim(), password.value);
     setApiKey(sessionToken);
-    router.replace("/hermes/chat");
+    router.replace("/hr/dashboard");
   } catch (err: any) {
     errorMsg.value = err.message || t("login.invalidCredentials");
   } finally {

@@ -21,6 +21,7 @@ const themeOverrides = computed(() => getThemeOverrides(isDark.value))
 const naiveTheme = computed(() => isDark.value ? darkTheme : null)
 
 const isLoginPage = computed(() => route.name === 'login')
+const isHrRoute = computed(() => !!route.meta.hr)
 
 const nodeVersionLow = computed(() => {
   const v = appStore.nodeVersion
@@ -60,12 +61,12 @@ useKeyboard()
           <div v-if="nodeVersionLow && ready" class="node-warning-bar">
             {{ t('sidebar.nodeVersionWarning', { version: appStore.nodeVersion }) }}
           </div>
-          <div v-if="ready" class="app-layout" :class="{ 'no-sidebar': isLoginPage }">
-            <button v-if="!isLoginPage" class="hamburger-btn" @click="appStore.toggleSidebar">
+          <div v-if="ready" class="app-layout" :class="{ 'no-sidebar': isLoginPage || isHrRoute }">
+            <button v-if="!isLoginPage && !isHrRoute" class="hamburger-btn" @click="appStore.toggleSidebar">
               <img src="/logo.png" alt="Menu" style="width: 24px; height: 24px;" />
             </button>
-            <div v-if="!isLoginPage && appStore.sidebarOpen" class="mobile-backdrop" @click="appStore.closeSidebar" />
-            <AppSidebar v-if="!isLoginPage" />
+            <div v-if="!isLoginPage && !isHrRoute && appStore.sidebarOpen" class="mobile-backdrop" @click="appStore.closeSidebar" />
+            <AppSidebar v-if="!isLoginPage && !isHrRoute" />
             <main class="app-main">
               <router-view />
             </main>
