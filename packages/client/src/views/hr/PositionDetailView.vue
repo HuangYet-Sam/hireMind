@@ -21,12 +21,14 @@ import {
   NSwitch,
   NGrid,
   NGridItem,
+  useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import type { Candidate } from '@/api/hr/candidates'
 
 const route = useRoute()
 const router = useRouter()
+const message = useMessage()
 const positionStore = usePositionStore()
 const candidateStore = useCandidateStore()
 const matchingStore = useMatchingStore()
@@ -122,25 +124,43 @@ onMounted(async () => {
 })
 
 async function handleClose() {
-  await positionStore.updatePosition(route.params.id as string, { status: 'closed' })
-  await positionStore.fetchPosition(route.params.id as string)
+  try {
+    await positionStore.updatePosition(route.params.id as string, { status: 'closed' })
+    await positionStore.fetchPosition(route.params.id as string)
+    message.success('岗位已关闭')
+  } catch {
+    message.error('关闭岗位失败')
+  }
 }
 
 async function handleReopen() {
-  await positionStore.updatePosition(route.params.id as string, { status: 'open' })
-  await positionStore.fetchPosition(route.params.id as string)
+  try {
+    await positionStore.updatePosition(route.params.id as string, { status: 'open' })
+    await positionStore.fetchPosition(route.params.id as string)
+    message.success('岗位已重新开放')
+  } catch {
+    message.error('重新开放失败')
+  }
 }
 
 async function handleTabChange(name: string) {
   if (name === 'candidates' && !candidatesLoaded.value) {
-    await candidateStore.fetchCandidates({ position_id: route.params.id as string })
-    candidatesLoaded.value = true
+    try {
+      await candidateStore.fetchCandidates({ position_id: route.params.id as string })
+      candidatesLoaded.value = true
+    } catch {
+      message.error('加载候选人失败')
+    }
   }
 }
 
 async function handleMatch() {
   matchingStarted.value = true
-  await matchingStore.matchCandidatesForPosition(route.params.id as string)
+  try {
+    await matchingStore.matchCandidatesForPosition(route.params.id as string)
+  } catch {
+    message.error('匹配失败')
+  }
 }
 </script>
 

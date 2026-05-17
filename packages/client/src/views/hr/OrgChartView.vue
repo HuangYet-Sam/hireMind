@@ -25,8 +25,8 @@ async function loadDepartments() {
   loading.value = true
   try {
     departments.value = await departmentsApi.getDepartmentTree()
-  } catch (err) {
-    console.error('Failed to load departments:', err)
+  } catch {
+    message.error('加载部门数据失败')
   } finally {
     loading.value = false
   }
@@ -61,8 +61,8 @@ async function loadDeptPositions(deptId: string) {
   try {
     const res = await positionsApi.listPositions({ department_id: deptId, page_size: 100 })
     deptPositions.value = res.items
-  } catch (err) {
-    console.error('Failed to load positions:', err)
+  } catch {
+    message.error('加载岗位列表失败')
     deptPositions.value = []
   } finally {
     positionsLoading.value = false

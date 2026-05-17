@@ -1,11 +1,12 @@
 """Matching Router — AI-powered candidate-position matching endpoints."""
 
+import math
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
-from app.dependencies import CurrentUserDep, DbSession
+from app.dependencies import CurrentUserDep, DbSession, PaginationDep
 from app.models.position import Position
 from app.schemas.matching import (
     CandidateMatchResult,
@@ -15,9 +16,58 @@ from app.schemas.matching import (
     MatchResultItem,
     PositionMatchResult,
 )
+from app.schemas.position import PositionListResponse, PositionResponse
 from app.services.matching_service import MatchingService
 
 router = APIRouter()
+
+
+@router.get(
+    "/positions",
+    response_model=PositionListResponse,
+    summary="List positions available for matching",
+)
+async def list_positions_for_matching(
+    db: DbSession,
+    current_user: CurrentUserDep,
+    pagination: PaginationDep,
+    status: str | None = Query(None, description="Filter by position status"),
+):
+    """Return positions that can be used as matching targets.
+
+    Frontend MatchingView uses this to populate the position selector.
+    Reuses the Position model directly for simplicity.
+    """
+    query = select(Position).where(
+        Position.tenant_id == current_user.tenant_id,
+    )
+    # Default to 'open' positions if no filter provided
+    if status:
+        query = query.where(Position.status == status)
+    else:
+        query = query.where(Position.status.in_(["open", "paused", "draft"]))
+
+    # Count total
+    from sqlalchemy import func
+    count_query = select(func.count()).select_from(query.subquery())
+    total = (await db.execute(count_query)).scalar() or 0
+
+    # Paginate
+    query = query.order_by(Position.created_at.desc())
+    query = query.offset(pagination.offset).limit(pagination.limit)
+    result = await db.execute(query)
+    positions = result.scalars().all()
+
+    items = [PositionResponse.model_validate(p) for p in positions]
+    pages = math.ceil(total / pagination.page_size) if total > 0 else 0
+
+    return PositionListResponse(
+        items=items,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+        pages=pages,
+    )
 
 
 @router.post(

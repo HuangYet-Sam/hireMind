@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
                 tenant_id=tenant.id,
                 email="admin@hiremind.local",
                 name_encrypted="Admin",
-                role="hr_admin",
+                role="admin",
             )
             session.add(user)
             await session.commit()

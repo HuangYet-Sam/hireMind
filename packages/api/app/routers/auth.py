@@ -18,7 +18,7 @@ router = APIRouter()
 ADMIN_USERNAME = "admin"
 ADMIN_USER_ID = "admin"
 ADMIN_TENANT_ID = "default"
-ADMIN_ROLE = "hr_admin"
+ADMIN_ROLE = "admin"
 ADMIN_EMAIL = "admin@hiremind.local"
 ADMIN_NAME = "Admin"
 

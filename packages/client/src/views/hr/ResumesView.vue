@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NButton, NDataTable, NInput, NSelect, NTag, NSpace, NSpin } from 'naive-ui'
+import { useRouter } from 'vue-router'
+import { NButton, NDataTable, NInput, NSelect, NTag, NSpace, NSpin, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useResumeStore } from '@/stores/hr/resumes'
 import type { Resume } from '@/api/hr/resumes'
 
+type TagType = 'default' | 'info' | 'success' | 'warning' | 'error'
+
+const router = useRouter()
 const resumeStore = useResumeStore()
+const message = useMessage()
 const keyword = ref('')
 const filterParseStatus = ref('')
 
@@ -17,7 +22,7 @@ const parseStatusOptions = [
   { label: '失败', value: 'failed' },
 ]
 
-const parseColorMap: Record<string, string> = {
+const parseColorMap: Record<string, TagType> = {
   pending: 'default',
   processing: 'warning',
   completed: 'success',
@@ -31,7 +36,7 @@ const columns: DataTableColumns<Resume> = [
     title: '解析状态',
     key: 'parse_status',
     width: 100,
-    render: (row) => h(NTag, { size: 'small', type: parseColorMap[row.parse_status] as any }, () => row.parse_status),
+    render: (row) => h(NTag, { size: 'small', type: parseColorMap[row.parse_status] ?? 'default' }, () => row.parse_status),
   },
   { title: '页数', key: 'page_count', width: 80 },
   { title: '上传时间', key: 'created_at', width: 120 },
@@ -59,16 +64,25 @@ function handleSearch() {
 }
 
 function handleView(id: string) {
-  // TODO: open resume viewer modal
-  console.log('View resume:', id)
+  router.push({ name: 'hr.resumeDetail', params: { id } })
 }
 
 async function handleReparse(id: string) {
-  await resumeStore.reparseResume(id)
+  try {
+    await resumeStore.reparseResume(id)
+    message.success('重新解析已触发')
+  } catch {
+    message.error('重新解析失败')
+  }
 }
 
 async function handleDelete(id: string) {
-  await resumeStore.deleteResume(id)
+  try {
+    await resumeStore.deleteResume(id)
+    message.success('简历已删除')
+  } catch {
+    message.error('删除失败')
+  }
 }
 </script>
 

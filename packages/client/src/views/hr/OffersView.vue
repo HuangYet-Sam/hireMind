@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
+import { useRouter } from 'vue-router'
 import { NButton, NDataTable, NTag, NSpace, NSelect, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useOfferStore } from '@/stores/hr/offers'
@@ -8,6 +9,9 @@ import OfferCreateModal from '@/components/hr/OfferCreateModal.vue'
 import ErrorBoundary from '@/components/hr/ErrorBoundary.vue'
 import TableSkeleton from '@/components/hr/TableSkeleton.vue'
 
+type TagType = 'default' | 'info' | 'success' | 'warning' | 'error'
+
+const router = useRouter()
 const offerStore = useOfferStore()
 const message = useMessage()
 const filterStatus = ref<string>('')
@@ -25,7 +29,7 @@ const statusOptions = [
   { label: '已撤回', value: 'withdrawn' },
 ]
 
-const statusColorMap: Record<string, string> = {
+const statusColorMap: Record<string, TagType> = {
   draft: 'default',
   pending_approval: 'warning',
   approved: 'info',
@@ -43,7 +47,7 @@ const columns: DataTableColumns<Offer> = [
     title: '状态',
     key: 'status',
     width: 100,
-    render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] as any }, () => row.status),
+    render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] ?? 'default' }, () => row.status),
   },
   { title: '基础薪资', key: 'base_salary', width: 100, render: (row) => row.base_salary ? `¥${row.base_salary.toLocaleString()}` : '-' },
   { title: '入职日期', key: 'proposed_start_date', width: 110 },
@@ -71,12 +75,12 @@ onMounted(() => {
 
 function handleFilter() {
   offerStore.fetchOffers({
-    status: (filterStatus.value || undefined) as any,
+    status: (filterStatus.value || undefined) as Offer['status'] | undefined,
   })
 }
 
 function handleView(id: string) {
-  console.log('View offer:', id)
+  router.push({ name: 'hr.offerDetail', params: { id } })
 }
 
 async function handleApprove(id: string) {

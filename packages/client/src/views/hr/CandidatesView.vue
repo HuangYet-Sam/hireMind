@@ -27,7 +27,7 @@ const stageOptions = [
   { label: '已拒绝', value: 'rejected' },
 ]
 
-const stageColorMap: Record<string, string> = {
+const stageColorMap: Record<string, 'default' | 'info' | 'success' | 'warning' | 'error'> = {
   applied: 'default',
   screened: 'info',
   interviewed: 'warning',
@@ -52,7 +52,7 @@ const columns: DataTableColumns<Candidate> = [
     title: '阶段',
     key: 'stage',
     width: 90,
-    render: (row) => h(NTag, { size: 'small', type: stageColorMap[row.stage] as any }, () => row.stage),
+    render: (row) => h(NTag, { size: 'small', type: stageColorMap[row.stage] ?? 'default' }, () => row.stage),
   },
   { title: '来源', key: 'source', width: 90 },
   { title: '经验(年)', key: 'years_of_experience', width: 80 },
@@ -71,7 +71,7 @@ onMounted(() => {
 function handleSearch() {
   candidateStore.fetchCandidates({
     keyword: keyword.value || undefined,
-    stage: (filterStage.value || undefined) as any,
+    stage: (filterStage.value || undefined) as Candidate['stage'] | undefined,
   })
 }
 

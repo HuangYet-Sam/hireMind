@@ -1,14 +1,19 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
-import { NButton, NDataTable, NTag, NSpace, NProgress, NSpin } from 'naive-ui'
+import { NButton, NDataTable, NTag, NSpace, NProgress, NSpin, NModal, NCard, NDescriptions, NDescriptionsItem, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import * as tasksApi from '@/api/hr/tasks'
 import type { AiTask } from '@/api/hr/tasks'
 
+type TagType = 'default' | 'info' | 'success' | 'warning' | 'error'
+
 const tasks = ref<AiTask[]>([])
 const loading = ref(false)
+const detailTask = ref<AiTask | null>(null)
+const showDetail = ref(false)
+const message = useMessage()
 
-const statusColorMap: Record<string, string> = {
+const statusColorMap: Record<string, TagType> = {
   queued: 'default',
   running: 'warning',
   completed: 'success',
@@ -31,7 +36,7 @@ const columns: DataTableColumns<AiTask> = [
     title: '状态',
     key: 'status',
     width: 100,
-    render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] as any }, () => row.status),
+    render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] ?? 'default' }, () => row.status),
   },
   {
     title: '进度',
@@ -71,25 +76,40 @@ async function fetchTasks() {
   try {
     const res = await tasksApi.listAiTasks()
     tasks.value = res.items
-  } catch (err) {
-    console.error('Failed to fetch AI tasks:', err)
+  } catch {
+    message.error('获取 AI 任务列表失败')
   } finally {
     loading.value = false
   }
 }
 
-function handleView(id: string) {
-  console.log('View task:', id)
+async function handleView(id: string) {
+  try {
+    detailTask.value = await tasksApi.getAiTask(id)
+    showDetail.value = true
+  } catch {
+    message.error('获取任务详情失败')
+  }
 }
 
 async function handleRetry(id: string) {
-  await tasksApi.retryAiTask(id)
-  await fetchTasks()
+  try {
+    await tasksApi.retryAiTask(id)
+    message.success('任务已重新开始')
+    await fetchTasks()
+  } catch {
+    message.error('重试失败')
+  }
 }
 
 async function handleCancel(id: string) {
-  await tasksApi.cancelAiTask(id)
-  await fetchTasks()
+  try {
+    await tasksApi.cancelAiTask(id)
+    message.success('任务已取消')
+    await fetchTasks()
+  } catch {
+    message.error('取消失败')
+  }
 }
 </script>
 
@@ -109,6 +129,32 @@ async function handleCancel(id: string) {
         striped
       />
     </NSpin>
+
+    <NModal v-model:show="showDetail" preset="card" title="任务详情" style="max-width: 600px;">
+      <template v-if="detailTask">
+        <NDescriptions bordered :column="1" label-placement="left" size="small">
+          <NDescriptionsItem label="任务ID">{{ detailTask.id }}</NDescriptionsItem>
+          <NDescriptionsItem label="类型">{{ typeLabelMap[detailTask.type] || detailTask.type }}</NDescriptionsItem>
+          <NDescriptionsItem label="状态">
+            <NTag size="small" :type="statusColorMap[detailTask.status] ?? 'default'">{{ detailTask.status }}</NTag>
+          </NDescriptionsItem>
+          <NDescriptionsItem label="进度">
+            <NProgress
+              type="line"
+              :percentage="detailTask.progress"
+              :status="detailTask.status === 'failed' ? 'error' : detailTask.status === 'completed' ? 'success' : 'default'"
+            />
+          </NDescriptionsItem>
+          <NDescriptionsItem label="输入摘要">{{ detailTask.input_summary || '-' }}</NDescriptionsItem>
+          <NDescriptionsItem v-if="detailTask.error" label="错误信息">
+            <span style="color: #d03050;">{{ detailTask.error }}</span>
+          </NDescriptionsItem>
+          <NDescriptionsItem label="创建时间">{{ detailTask.created_at }}</NDescriptionsItem>
+          <NDescriptionsItem label="开始时间">{{ detailTask.started_at || '-' }}</NDescriptionsItem>
+          <NDescriptionsItem label="完成时间">{{ detailTask.completed_at || '-' }}</NDescriptionsItem>
+        </NDescriptions>
+      </template>
+    </NModal>
   </div>
 </template>
 

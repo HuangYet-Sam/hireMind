@@ -959,7 +959,7 @@ class TestMultiTenantIsolation:
 
         async def override_tenant2():
             return CurrentUser(
-                user_id="test-user-2", tenant_id=str(tenant2.id), role="hr_admin"
+                user_id="test-user-2", tenant_id=str(tenant2.id), role="admin"
             )
 
         app.dependency_overrides[dependencies.get_current_user] = override_tenant2
@@ -1009,7 +1009,7 @@ class TestMultiTenantIsolation:
 
         async def override_tenant2():
             return CurrentUser(
-                user_id="test-user-2", tenant_id=str(tenant2.id), role="hr_admin"
+                user_id="test-user-2", tenant_id=str(tenant2.id), role="admin"
             )
 
         app.dependency_overrides[dependencies.get_current_user] = override_tenant2

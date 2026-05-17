@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
+import { useRouter } from 'vue-router'
 import { NButton, NDataTable, NTag, NSpace, NSelect, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { useInterviewStore } from '@/stores/hr/interviews'
@@ -8,6 +9,9 @@ import InterviewCreateModal from '@/components/hr/InterviewCreateModal.vue'
 import ErrorBoundary from '@/components/hr/ErrorBoundary.vue'
 import TableSkeleton from '@/components/hr/TableSkeleton.vue'
 
+type TagType = 'default' | 'info' | 'success' | 'warning' | 'error'
+
+const router = useRouter()
 const interviewStore = useInterviewStore()
 const message = useMessage()
 const filterStatus = ref<string>('')
@@ -22,7 +26,7 @@ const statusOptions = [
   { label: '已取消', value: 'cancelled' },
 ]
 
-const statusColorMap: Record<string, string> = {
+const statusColorMap: Record<string, TagType> = {
   scheduled: 'warning',
   confirmed: 'info',
   in_progress: 'success',
@@ -40,7 +44,7 @@ const columns: DataTableColumns<Interview> = [
     title: '状态',
     key: 'status',
     width: 90,
-    render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] as any }, () => row.status),
+    render: (row) => h(NTag, { size: 'small', type: statusColorMap[row.status] ?? 'default' }, () => row.status),
   },
   { title: '时间', key: 'scheduled_at', width: 160 },
   { title: '时长(分)', key: 'duration_minutes', width: 80 },
@@ -62,12 +66,12 @@ onMounted(() => {
 
 function handleFilter() {
   interviewStore.fetchInterviews({
-    status: (filterStatus.value || undefined) as any,
+    status: (filterStatus.value || undefined) as Interview['status'] | undefined,
   })
 }
 
 function handleView(id: string) {
-  console.log('View interview:', id)
+  router.push({ name: 'hr.interviewDetail', params: { id } })
 }
 
 async function handleCancel(id: string) {
