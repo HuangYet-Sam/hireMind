@@ -21,7 +21,7 @@ from app.services.ai_task_service import AiTaskService
 router = APIRouter()
 
 
-@router.get("/", response_model=PaginatedAiTaskResponse, summary="List AI tasks")
+@router.get("", response_model=PaginatedAiTaskResponse, summary="List AI tasks")
 async def list_ai_tasks(
     db: DbSession,
     current_user: CurrentUserDep,

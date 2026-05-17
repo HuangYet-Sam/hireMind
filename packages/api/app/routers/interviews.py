@@ -62,7 +62,7 @@ async def generate_ai_questions(
     return result
 
 
-@router.get("/", response_model=InterviewListResponse, summary="List interviews")
+@router.get("", response_model=InterviewListResponse, summary="List interviews")
 async def list_interviews(
     db: DbSession,
     pagination: PaginationDep,

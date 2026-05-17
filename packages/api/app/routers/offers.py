@@ -55,7 +55,7 @@ async def generate_salary_recommendation(
     return result
 
 
-@router.get("/", response_model=OfferListResponse, summary="List offers")
+@router.get("", response_model=OfferListResponse, summary="List offers")
 async def list_offers(
     db: DbSession,
     pagination: PaginationDep,

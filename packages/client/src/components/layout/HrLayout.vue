@@ -299,7 +299,20 @@ const logoPath = '/logo.png'
   }
 
   .hr-collapse-btn {
-    display: none;
+    position: absolute;
+    top: 50%;
+    right: -14px;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: $radius-sm;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    z-index: 10;
   }
 }
 

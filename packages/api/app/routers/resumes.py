@@ -20,7 +20,7 @@ from app.services.resume_service import ResumeService
 router = APIRouter()
 
 
-@router.get("/", response_model=ResumeListResponse, summary="List resumes")
+@router.get("", response_model=ResumeListResponse, summary="List resumes")
 async def list_resumes(
     db: DbSession,
     pagination: PaginationDep,

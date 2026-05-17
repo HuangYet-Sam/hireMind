@@ -65,7 +65,7 @@ async def get_department_tree(
     return DepartmentTreeResponse(tree=roots)
 
 
-@router.get("/", response_model=DepartmentListResponse, summary="List departments")
+@router.get("", response_model=DepartmentListResponse, summary="List departments")
 async def list_departments(
     db: DbSession,
     current_user: CurrentUserDep,

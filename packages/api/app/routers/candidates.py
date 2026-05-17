@@ -31,7 +31,7 @@ class StageAdvanceRequest(BaseModel):
     stage: str
 
 
-@router.get("/", response_model=CandidateListResponse, summary="List candidates")
+@router.get("", response_model=CandidateListResponse, summary="List candidates")
 async def list_candidates(
     db: DbSession,
     pagination: PaginationDep,

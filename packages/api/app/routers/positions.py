@@ -24,7 +24,7 @@ router = APIRouter()
 _RecruiterOrAbove = Annotated[CurrentUser, Depends(require_role("recruiter", "hr_manager", "admin"))]
 
 
-@router.get("/", response_model=PositionListResponse, summary="List positions")
+@router.get("", response_model=PositionListResponse, summary="List positions")
 async def list_positions(
     db: DbSession,
     pagination: PaginationDep,
