@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { NCard, NSelect, NButton, NSpin, NEmpty, NGrid, NGridItem, NProgress } from 'naive-ui'
+import { NCard, NSelect, NButton, NSpin, NEmpty, NGrid, NGridItem, NProgress, useMessage } from 'naive-ui'
 import { usePositionStore } from '@/stores/hr/positions'
 import { useMatchingStore } from '@/stores/hr/matching'
 
 const positionStore = usePositionStore()
 const matchingStore = useMatchingStore()
 const selectedPositionId = ref<string | null>(null)
+const message = useMessage()
 
 onMounted(() => {
   positionStore.fetchPositions({ status: 'open' })
@@ -14,7 +15,14 @@ onMounted(() => {
 
 async function handleMatch() {
   if (!selectedPositionId.value) return
-  await matchingStore.matchCandidatesForPosition(selectedPositionId.value)
+  try {
+    const result = await matchingStore.matchCandidatesForPosition(selectedPositionId.value)
+    if (result.length === 0) {
+      message.warning('未找到匹配的候选人，请尝试其他岗位')
+    }
+  } catch {
+    message.error('匹配失败，请稍后重试')
+  }
 }
 </script>
 

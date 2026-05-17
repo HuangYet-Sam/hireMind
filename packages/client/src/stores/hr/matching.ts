@@ -16,7 +16,7 @@ export const useMatchingStore = defineStore('hr-matching', () => {
       return result.matches
     } catch (err) {
       console.error('Failed to match candidates for position:', err)
-      return []
+      throw err
     } finally {
       loading.value = false
     }

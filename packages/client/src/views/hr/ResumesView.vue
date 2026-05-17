@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, h } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NDataTable, NInput, NSelect, NTag, NSpace, NSpin, useMessage } from 'naive-ui'
-import type { DataTableColumns } from 'naive-ui'
+import { NButton, NDataTable, NInput, NSelect, NTag, NSpace, NSpin, NModal, NUpload, useMessage } from 'naive-ui'
+import type { DataTableColumns, UploadFileInfo } from 'naive-ui'
 import { useResumeStore } from '@/stores/hr/resumes'
+import { uploadResume } from '@/api/hr/resumes'
 import type { Resume } from '@/api/hr/resumes'
 
 type TagType = 'default' | 'info' | 'success' | 'warning' | 'error'
@@ -13,6 +14,10 @@ const resumeStore = useResumeStore()
 const message = useMessage()
 const keyword = ref('')
 const filterParseStatus = ref('')
+
+const showUploadModal = ref(false)
+const uploading = ref(false)
+const uploadFileList = ref<UploadFileInfo[]>([])
 
 const parseStatusOptions = [
   { label: '全部', value: '' },
@@ -84,13 +89,37 @@ async function handleDelete(id: string) {
     message.error('删除失败')
   }
 }
+
+function handleUploadChange(options: { fileList: UploadFileInfo[] }) {
+  uploadFileList.value = options.fileList
+}
+
+async function handleUploadSubmit() {
+  const file = uploadFileList.value[0]?.file
+  if (!file) {
+    message.warning('请选择文件')
+    return
+  }
+  uploading.value = true
+  try {
+    await uploadResume(file as File)
+    message.success('简历上传成功')
+    showUploadModal.value = false
+    uploadFileList.value = []
+    resumeStore.fetchResumes()
+  } catch {
+    message.error('上传失败')
+  } finally {
+    uploading.value = false
+  }
+}
 </script>
 
 <template>
   <div class="resumes-view">
     <header class="page-header">
       <h2 class="header-title">简历库</h2>
-      <NButton type="primary">上传简历</NButton>
+      <NButton type="primary" @click="showUploadModal = true">上传简历</NButton>
     </header>
 
     <div class="filter-bar">
@@ -108,6 +137,23 @@ async function handleDelete(id: string) {
         striped
       />
     </NSpin>
+
+    <NModal v-model:show="showUploadModal" preset="card" title="上传简历" style="max-width: 480px;">
+      <NUpload
+        :max="1"
+        accept=".pdf,.doc,.docx,.txt"
+        :default-upload="false"
+        @change="handleUploadChange"
+      >
+        <NButton>选择文件</NButton>
+      </NUpload>
+      <template #action>
+        <NSpace justify="end">
+          <NButton @click="showUploadModal = false">取消</NButton>
+          <NButton type="primary" :loading="uploading" @click="handleUploadSubmit">上传</NButton>
+        </NSpace>
+      </template>
+    </NModal>
   </div>
 </template>
 
