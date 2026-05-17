@@ -28,13 +28,17 @@ RUN rm /etc/nginx/conf.d/default.conf
 # Copy custom nginx configuration
 COPY packages/client/nginx.conf /etc/nginx/conf.d/default.conf
 
+# Copy SSL certificates
+COPY packages/client/ssl/cert.pem /etc/nginx/ssl/cert.pem
+COPY packages/client/ssl/key.pem /etc/nginx/ssl/key.pem
+
 # Copy built assets from build stage
 COPY --from=build /app/dist/client /usr/share/nginx/html
 
-# Expose HTTP port
-EXPOSE 80
+# Expose HTTP + HTTPS ports
+EXPOSE 80 443
 
-# Healthcheck: verify nginx is serving
+# Healthcheck: verify nginx is serving (use HTTP for healthcheck)
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1
 
