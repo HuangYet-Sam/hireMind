@@ -13,6 +13,10 @@ export interface PipelineStage {
   count: number
 }
 
+export interface PipelineResponse {
+  stages: PipelineStage[]
+}
+
 export interface TimeToHirePeriod {
   period: string
   avg_days: number
@@ -48,7 +52,8 @@ export async function getKpiSummary(params?: AnalyticsParams): Promise<Dashboard
 }
 
 export async function getRecruitmentFunnel(params?: AnalyticsParams): Promise<PipelineStage[]> {
-  return hrGet<PipelineStage[]>('/analytics/pipeline', params as Record<string, string>)
+  const res = await hrGet<PipelineResponse>('/analytics/pipeline', params as Record<string, string>)
+  return res.stages ?? res as unknown as PipelineStage[]
 }
 
 export async function getTimeToHire(params?: AnalyticsParams & { group_by?: string }): Promise<TimeToHirePeriod[]> {
@@ -56,7 +61,11 @@ export async function getTimeToHire(params?: AnalyticsParams & { group_by?: stri
 }
 
 export async function getPositionMetrics(params?: AnalyticsParams): Promise<unknown[]> {
-  return hrGet<unknown[]>('/analytics/positions', params as Record<string, string>)
+  try {
+    return await hrGet<unknown[]>('/analytics/positions', params as Record<string, string>)
+  } catch {
+    return []
+  }
 }
 
 export async function getSourceBreakdown(): Promise<SourceEffectiveness[]> {

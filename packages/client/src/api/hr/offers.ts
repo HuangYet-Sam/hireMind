@@ -85,7 +85,7 @@ export async function approveOffer(id: string, comment?: string): Promise<Offer>
 }
 
 export async function rejectOffer(id: string, comment?: string): Promise<Offer> {
-  return hrPost<Offer>(`/offers/${id}/reject`, { comment })
+  return await hrPatch<Offer>(`/offers/${id}`, { notes: comment ?? 'Rejected' })
 }
 
 export async function sendOffer(id: string): Promise<Offer> {
