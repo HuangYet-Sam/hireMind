@@ -1,4 +1,11 @@
+/**
+ * Analytics API — M7 Enhanced
+ *
+ * Existing endpoints + new funnel / trends / source / channel / position APIs
+ */
 import { hrGet } from './client'
+
+// ── Types ────────────────────────────────────────────────────
 
 export interface DashboardData {
   open_positions: number
@@ -43,6 +50,65 @@ export interface AnalyticsParams {
   position_id?: string
 }
 
+// ── M7 New Types ─────────────────────────────────────────────
+
+/** 漏斗分析数据 */
+export interface FunnelStageDetailed {
+  stage: string
+  count: number
+  percentage: number
+  conversion_rate: number
+  avg_days_in_stage?: number
+}
+
+/** 趋势数据点 */
+export interface TrendPoint {
+  date: string
+  resumes: number
+  matches: number
+  interviews: number
+  offers: number
+}
+
+/** 来源分布 */
+export interface SourceDistributionItem {
+  source: string
+  count: number
+  percentage: number
+}
+
+/** 渠道 ROI */
+export interface ChannelROI {
+  source: string
+  resume_count: number
+  interview_rate: number
+  offer_rate: number
+  cost_per_hire: number
+  total_cost: number
+  roi_score: number
+}
+
+/** 岗位效能 */
+export interface PositionPerformance {
+  position_id: string
+  position_title: string
+  department: string
+  total_candidates: number
+  interview_rate: number
+  offer_rate: number
+  avg_time_to_hire: number
+  funnel_stages: FunnelStageDetailed[]
+  performance_score: number
+}
+
+export interface TrendParams {
+  period: 'day' | 'week' | 'month'
+  date_from?: string
+  date_to?: string
+}
+
+// ── Existing API Functions ───────────────────────────────────
+
 export async function getDashboardOverview(params?: AnalyticsParams): Promise<DashboardData> {
   return hrGet<DashboardData>('/analytics/dashboard', params as Record<string, string>)
 }
@@ -60,16 +126,10 @@ export async function getTimeToHire(params?: AnalyticsParams & { group_by?: stri
   return hrGet<TimeToHirePeriod[]>('/analytics/time-to-hire', params as Record<string, string>)
 }
 
-/**
- * Position-level metrics.
- * NOTE: The backend has no /analytics/positions endpoint.
- * This function will always fall back to [] until the endpoint is added.
- */
 export async function getPositionMetrics(params?: AnalyticsParams): Promise<unknown[]> {
   try {
     return await hrGet<unknown[]>('/analytics/positions', params as Record<string, string>)
   } catch {
-    // Backend does not implement this endpoint yet — return empty fallback
     return []
   }
 }
@@ -80,4 +140,31 @@ export async function getSourceBreakdown(): Promise<SourceEffectiveness[]> {
 
 export async function getDepartmentSummary(): Promise<DepartmentSummary[]> {
   return hrGet<DepartmentSummary[]>('/analytics/department-summary')
+}
+
+// ── M7 New API Functions ─────────────────────────────────────
+
+/** 获取漏斗详细数据 */
+export async function fetchFunnel(params?: AnalyticsParams): Promise<FunnelStageDetailed[]> {
+  return hrGet<FunnelStageDetailed[]>('/analytics/funnel', params as Record<string, string>)
+}
+
+/** 获取趋势数据 */
+export async function fetchTrends(params: TrendParams): Promise<TrendPoint[]> {
+  return hrGet<TrendPoint[]>('/analytics/trends', params as Record<string, string>)
+}
+
+/** 获取来源分布 */
+export async function fetchSourceDistribution(params?: AnalyticsParams): Promise<SourceDistributionItem[]> {
+  return hrGet<SourceDistributionItem[]>('/analytics/source-distribution', params as Record<string, string>)
+}
+
+/** 获取渠道 ROI 对比 */
+export async function fetchChannelROI(params?: AnalyticsParams): Promise<ChannelROI[]> {
+  return hrGet<ChannelROI[]>('/analytics/channel-roi', params as Record<string, string>)
+}
+
+/** 获取岗位效能排名 */
+export async function fetchPositionPerformance(params?: AnalyticsParams): Promise<PositionPerformance[]> {
+  return hrGet<PositionPerformance[]>('/analytics/position-performance', params as Record<string, string>)
 }
