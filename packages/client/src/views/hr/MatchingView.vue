@@ -214,7 +214,7 @@ function getItemKey(item: MatchItem): string {
         <div class="toolbar">
           <div class="toolbar-left">
             <NRadioGroup v-model:value="viewMode" size="small">
-              <NRadioButton value="list">List</NRadioGroup>
+              <NRadioButton value="list">List</NRadioButton>
               <NRadioButton value="kanban">Kanban</NRadioButton>
             </NRadioGroup>
 

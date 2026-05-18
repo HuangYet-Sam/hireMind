@@ -16,6 +16,7 @@ from app.routers import (
     analytics,
     auth,
     candidates,
+    cron,
     dashboard,
     departments,
     interviews,
@@ -24,6 +25,7 @@ from app.routers import (
     positions,
     public,
     resumes,
+    skills,
 )
 
 
@@ -123,6 +125,8 @@ app.include_router(departments.router, prefix="/api/v1/departments", tags=["Depa
 app.include_router(ai_tasks.router, prefix="/api/v1/ai-tasks", tags=["AI Tasks"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(dashboard.router, prefix="/api/v1/dashboard", tags=["Dashboard"])
+app.include_router(cron.router, prefix="/api/v1/cron", tags=["Cron Jobs"])
+app.include_router(skills.router, prefix="/api/v1/skills", tags=["Skills"])
 app.include_router(public.router, tags=["Public Token URLs"])
 
 

@@ -178,6 +178,26 @@ const router = createRouter({
           name: 'hr.tasks',
           component: () => import('@/views/hr/TasksView.vue'),
         },
+        {
+          path: 'cron',
+          name: 'hr.cron',
+          component: () => import('@/views/hr/CronManagerView.vue'),
+        },
+        {
+          path: 'skill-registry',
+          name: 'hr.skillRegistry',
+          component: () => import('@/views/hr/SkillRegistryView.vue'),
+        },
+        {
+          path: 'ai-task-center',
+          name: 'hr.aiTaskCenter',
+          component: () => import('@/views/hr/AITaskCenterView.vue'),
+        },
+        {
+          path: 'daily-report',
+          name: 'hr.dailyReport',
+          component: () => import('@/views/hr/DailyReportPreviewView.vue'),
+        },
       ],
     },
 

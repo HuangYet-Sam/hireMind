@@ -43,6 +43,10 @@ const menuItems = computed(() => [
   { key: 'hr.offers', label: t('sidebar.hrOffers') },
   { key: 'hr.analytics', label: t('sidebar.hrAnalytics') },
   { key: 'hr.tasks', label: t('sidebar.hrTasks') },
+  { key: 'hr.cron', label: t('sidebar.hrCron') },
+  { key: 'hr.skillRegistry', label: t('sidebar.hrSkillRegistry') },
+  { key: 'hr.aiTaskCenter', label: t('sidebar.hrAiTaskCenter') },
+  { key: 'hr.dailyReport', label: t('sidebar.hrDailyReport') },
 ])
 
 const activeKey = computed(() => {
@@ -53,6 +57,10 @@ const activeKey = computed(() => {
   if (name === 'hr.interviewDetail') return 'hr.interviews'
   if (name === 'hr.offerDetail') return 'hr.offers'
   if (name === 'hr.reverseMatching') return 'hr.reverseMatching'
+  if (name === 'hr.cron') return 'hr.cron'
+  if (name === 'hr.skillRegistry') return 'hr.skillRegistry'
+  if (name === 'hr.aiTaskCenter') return 'hr.aiTaskCenter'
+  if (name === 'hr.dailyReport') return 'hr.dailyReport'
   return name
 })
 
@@ -77,6 +85,10 @@ const breadcrumbItems = computed(() => {
     'hr.offerDetail': t('sidebar.hrOffers'),
     'hr.analytics': t('sidebar.hrAnalytics'),
     'hr.tasks': t('sidebar.hrTasks'),
+    'hr.cron': t('sidebar.hrCron'),
+    'hr.skillRegistry': t('sidebar.hrSkillRegistry'),
+    'hr.aiTaskCenter': t('sidebar.hrAiTaskCenter'),
+    'hr.dailyReport': t('sidebar.hrDailyReport'),
   }
   const label = nameMap[route.name as string]
   if (label && route.name !== 'hr.dashboard') {
@@ -183,6 +195,32 @@ const logoPath = '/logo.png'
             <path d="M9 18h6" />
             <path d="M10 22h4" />
             <path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z" />
+          </svg>
+          <svg v-else-if="item.key === 'hr.cron'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+          <svg v-else-if="item.key === 'hr.skillRegistry'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+          </svg>
+          <svg v-else-if="item.key === 'hr.aiTaskCenter'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+            <rect x="9" y="9" width="6" height="6" />
+            <line x1="9" y1="2" x2="9" y2="4" />
+            <line x1="15" y1="2" x2="15" y2="4" />
+            <line x1="9" y1="20" x2="9" y2="22" />
+            <line x1="15" y1="20" x2="15" y2="22" />
+            <line x1="20" y1="9" x2="22" y2="9" />
+            <line x1="20" y1="15" x2="22" y2="15" />
+            <line x1="2" y1="9" x2="4" y2="9" />
+            <line x1="2" y1="15" x2="4" y2="15" />
+          </svg>
+          <svg v-else-if="item.key === 'hr.dailyReport'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
           </svg>
           <span v-if="!collapsed" class="hr-nav-label">{{ item.label }}</span>
         </button>
