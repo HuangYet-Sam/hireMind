@@ -198,6 +198,21 @@ const router = createRouter({
           name: 'hr.dailyReport',
           component: () => import('@/views/hr/DailyReportPreviewView.vue'),
         },
+        {
+          path: 'memories',
+          name: 'hr.memories',
+          component: () => import('@/views/hr/MemoryManagerView.vue'),
+        },
+        {
+          path: 'proactive',
+          name: 'hr.proactive',
+          component: () => import('@/views/hr/ProactiveAICenterView.vue'),
+        },
+        {
+          path: 'talent-activation',
+          name: 'hr.talentActivation',
+          component: () => import('@/views/hr/TalentActivationView.vue'),
+        },
       ],
     },
 

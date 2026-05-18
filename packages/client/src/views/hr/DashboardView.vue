@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
- * DashboardView — M7 重构版
+ * DashboardView — M7 + M10 重构版
  *
  * NGrid 响应式布局 Dashboard 主页面
  * 顶部 KPI 卡片 → 待办 + AI洞察 → 漏斗 + 趋势 → 来源分布 + 快捷操作
+ * M10: AI记忆展示区 + 主动推荐区
  */
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
@@ -21,6 +22,10 @@ import type {
   TodoItem, ScheduleEvent, AiInsight, KpiMetrics,
   FunnelStage, TrendDataPoint, SourceDistribution, AIInsight,
 } from '@/api/hr/dashboard'
+import { fetchMemories, getMemoryStats } from '@/api/hr/memories'
+import type { Memory } from '@/api/hr/memories'
+import { fetchProactiveMessages, fetchProactiveStats } from '@/api/hr/proactive'
+import type { ProactiveMessage } from '@/api/hr/proactive'
 
 import DashboardTodoList from '@/components/hr/DashboardTodoList.vue'
 import DashboardInsights from '@/components/hr/DashboardInsights.vue'
@@ -44,12 +49,19 @@ const insightsData = ref<AIInsight[]>([])
 
 const trendPeriod = ref<'day' | 'week' | 'month'>('week')
 
+// ── M10: AI Memory + Proactive data ─────────────────────────
+const recentMemories = ref<Memory[]>([])
+const proactiveRecommendations = ref<ProactiveMessage[]>([])
+const loadingMemories = ref(false)
+const loadingProactive = ref(false)
+
 const loadingSections = ref({
   kpi: false,
   todos: false,
   insights: false,
   charts: false,
   sources: false,
+  aiSection: false,
 })
 
 // ── KPI Cards config ─────────────────────────────────────────
@@ -179,6 +191,8 @@ onMounted(async () => {
     loadInsights(),
     loadCharts(),
     loadSources(),
+    loadRecentMemories(),
+    loadProactiveRecommendations(),
   ])
 })
 
@@ -279,6 +293,32 @@ async function loadSources() {
     }))
   } finally {
     loadingSections.value.sources = false
+  }
+}
+
+// ── M10: AI Memory + Proactive loading ──────────────────────
+
+async function loadRecentMemories() {
+  loadingMemories.value = true
+  try {
+    const res = await fetchMemories({ page: 1, page_size: 3 })
+    recentMemories.value = res.items
+  } catch {
+    // Silent fail - memories are supplementary
+  } finally {
+    loadingMemories.value = false
+  }
+}
+
+async function loadProactiveRecommendations() {
+  loadingProactive.value = true
+  try {
+    const res = await fetchProactiveMessages({ page: 1, page_size: 3, is_read: false, status: 'pending' })
+    proactiveRecommendations.value = res.items
+  } catch {
+    // Silent fail - proactive messages are supplementary
+  } finally {
+    loadingProactive.value = false
   }
 }
 
@@ -531,6 +571,76 @@ function trendClass(trend?: number): string {
           </NCard>
         </NGridItem>
       </NGrid>
+
+      <!-- ═══ Row 5: M10 AI Memory + Proactive Recommendations ═══ -->
+      <NGrid :cols="24" :x-gap="16" :y-gap="16" responsive="screen" item-responsive style="margin-top: 16px;">
+        <!-- AI Memory Display -->
+        <NGridItem span="0:24 1024:12">
+          <NCard size="small">
+            <template #header>
+              <NSpace justify="space-between" align="center" style="width: 100%;">
+                <span>🧠 AI 记忆</span>
+                <NButton size="tiny" @click="navigateTo('/hr/memories')">查看全部</NButton>
+              </NSpace>
+            </template>
+            <NSpin :show="loadingMemories">
+              <div v-if="recentMemories.length" class="memory-cards">
+                <div v-for="mem in recentMemories" :key="mem.id" class="memory-card-item">
+                  <div class="memory-header">
+                    <NTag
+                      size="tiny"
+                      :type="mem.type === 'preference' ? 'info' : mem.type === 'insight' ? 'success' : mem.type === 'decision' ? 'warning' : 'default'"
+                    >
+                      {{ mem.type === 'preference' ? '偏好' : mem.type === 'insight' ? '洞察' : mem.type === 'decision' ? '决策' : mem.type === 'pattern' ? '模式' : '事实' }}
+                    </NTag>
+                    <span class="memory-confidence">{{ (mem.confidence * 100).toFixed(0) }}%</span>
+                  </div>
+                  <div class="memory-summary">{{ mem.summary }}</div>
+                  <div class="memory-meta">
+                    <span>{{ mem.source || '系统' }}</span>
+                    <span>{{ new Date(mem.created_at).toLocaleDateString('zh-CN') }}</span>
+                  </div>
+                </div>
+              </div>
+              <NEmpty v-else description="暂无相关记忆" size="small" />
+            </NSpin>
+          </NCard>
+        </NGridItem>
+
+        <!-- Proactive Recommendations -->
+        <NGridItem span="0:24 1024:12">
+          <NCard size="small">
+            <template #header>
+              <NSpace justify="space-between" align="center" style="width: 100%;">
+                <span>🤖 今日 AI 推荐</span>
+                <NButton size="tiny" @click="navigateTo('/hr/proactive')">查看全部</NButton>
+              </NSpace>
+            </template>
+            <NSpin :show="loadingProactive">
+              <div v-if="proactiveRecommendations.length" class="proactive-cards">
+                <div v-for="rec in proactiveRecommendations" :key="rec.id" class="proactive-card-item">
+                  <div class="proactive-header">
+                    <NTag size="tiny" type="warning">{{ rec.category }}</NTag>
+                    <span class="proactive-time">{{ new Date(rec.created_at).toLocaleDateString('zh-CN') }}</span>
+                  </div>
+                  <div class="proactive-title">{{ rec.title }}</div>
+                  <div class="proactive-content">{{ rec.content }}</div>
+                  <NButton
+                    v-if="rec.action_link"
+                    size="tiny"
+                    type="primary"
+                    @click="navigateTo(rec.action_link!)"
+                    style="margin-top: 8px;"
+                  >
+                    {{ rec.action_label || '立即处理' }}
+                  </NButton>
+                </div>
+              </div>
+              <NEmpty v-else description="暂无推荐" size="small" />
+            </NSpin>
+          </NCard>
+        </NGridItem>
+      </NGrid>
     </div>
   </div>
 </template>
@@ -773,5 +883,103 @@ function trendClass(trend?: number): string {
   color: $text-muted;
   text-align: center;
   padding-top: 4px;
+}
+
+// M10: AI Memory cards
+.memory-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.memory-card-item {
+  padding: 10px 12px;
+  border-radius: $radius-sm;
+  border: 1px solid $border-light;
+  transition: border-color $transition-fast;
+
+  &:hover {
+    border-color: $border-color;
+  }
+}
+
+.memory-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.memory-confidence {
+  font-size: 12px;
+  color: $text-muted;
+  font-weight: 500;
+}
+
+.memory-summary {
+  font-size: 13px;
+  color: $text-primary;
+  line-height: 1.4;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.memory-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: $text-muted;
+}
+
+// M10: Proactive cards
+.proactive-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.proactive-card-item {
+  padding: 10px 12px;
+  border-radius: $radius-sm;
+  border: 1px solid $border-light;
+  transition: border-color $transition-fast;
+
+  &:hover {
+    border-color: $border-color;
+  }
+}
+
+.proactive-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.proactive-time {
+  font-size: 12px;
+  color: $text-muted;
+}
+
+.proactive-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: $text-primary;
+  margin-bottom: 4px;
+}
+
+.proactive-content {
+  font-size: 13px;
+  color: $text-secondary;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 </style>

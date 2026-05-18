@@ -47,6 +47,9 @@ const menuItems = computed(() => [
   { key: 'hr.skillRegistry', label: t('sidebar.hrSkillRegistry') },
   { key: 'hr.aiTaskCenter', label: t('sidebar.hrAiTaskCenter') },
   { key: 'hr.dailyReport', label: t('sidebar.hrDailyReport') },
+  { key: 'hr.memories', label: t('sidebar.hrMemories') || 'AI记忆' },
+  { key: 'hr.proactive', label: t('sidebar.hrProactive') || '主动AI' },
+  { key: 'hr.talentActivation', label: t('sidebar.hrTalentActivation') || '人才激活' },
 ])
 
 const activeKey = computed(() => {
@@ -61,6 +64,9 @@ const activeKey = computed(() => {
   if (name === 'hr.skillRegistry') return 'hr.skillRegistry'
   if (name === 'hr.aiTaskCenter') return 'hr.aiTaskCenter'
   if (name === 'hr.dailyReport') return 'hr.dailyReport'
+  if (name === 'hr.memories') return 'hr.memories'
+  if (name === 'hr.proactive') return 'hr.proactive'
+  if (name === 'hr.talentActivation') return 'hr.talentActivation'
   return name
 })
 
@@ -89,6 +95,9 @@ const breadcrumbItems = computed(() => {
     'hr.skillRegistry': t('sidebar.hrSkillRegistry'),
     'hr.aiTaskCenter': t('sidebar.hrAiTaskCenter'),
     'hr.dailyReport': t('sidebar.hrDailyReport'),
+    'hr.memories': t('sidebar.hrMemories') || 'AI记忆',
+    'hr.proactive': t('sidebar.hrProactive') || '主动AI',
+    'hr.talentActivation': t('sidebar.hrTalentActivation') || '人才激活',
   }
   const label = nameMap[route.name as string]
   if (label && route.name !== 'hr.dashboard') {
@@ -221,6 +230,23 @@ const logoPath = '/logo.png'
             <line x1="16" y1="13" x2="8" y2="13" />
             <line x1="16" y1="17" x2="8" y2="17" />
             <polyline points="10 9 9 9 8 9" />
+          </svg>
+          <svg v-else-if="item.key === 'hr.memories'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a8 8 0 0 0-8 8c0 6 8 12 8 12s8-6 8-12a8 8 0 0 0-8-8z" />
+            <circle cx="12" cy="10" r="3" />
+          </svg>
+          <svg v-else-if="item.key === 'hr.proactive'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+            <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            <line x1="12" y1="2" x2="12" y2="5" />
+            <line x1="22" y1="8" x2="19" y2="8" />
+            <line x1="5" y1="8" x2="2" y2="8" />
+          </svg>
+          <svg v-else-if="item.key === 'hr.talentActivation'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+            <line x1="19" y1="3" x2="19" y2="9" />
+            <line x1="16" y1="6" x2="22" y2="6" />
           </svg>
           <span v-if="!collapsed" class="hr-nav-label">{{ item.label }}</span>
         </button>

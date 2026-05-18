@@ -569,3 +569,431 @@ class CandidateProfileBuilder:
             last_updated=None,
             source_refs=[],
         )
+
+    # ------------------------------------------------------------------
+    # M10: 记忆注入 & 学术式画像
+    # ------------------------------------------------------------------
+
+    async def inject_memories(
+        self,
+        candidate_id: str,
+        tenant_id: str,
+    ) -> dict[str, Any]:
+        """
+        记忆注入画像 — 查找与该候选人相关的记忆，将偏好/历史决策注入画像上下文。
+
+        从记忆系统中检索与候选人相关的所有记忆（偏好、决策、洞察），
+        整合到画像上下文中，供后续 AI 分析使用。
+
+        Args:
+            candidate_id: 候选人 UUID。
+            tenant_id: 租户 ID。
+
+        Returns:
+            包含注入记忆的画像上下文字典。
+        """
+        from app.models.memory import Memory
+        from sqlalchemy import and_
+
+        # 加载候选人
+        candidate = await self._load_candidate(UUID(candidate_id))
+        if candidate is None:
+            raise ValueError(f"Candidate not found: {candidate_id}")
+
+        # 查找与该候选人直接相关的记忆（source_id = candidate_id）
+        direct_memories = (await self.db.execute(
+            select(Memory).where(
+                Memory.tenant_id == tenant_id,
+                Memory.is_active == True,  # noqa: E712
+                Memory.source_id == candidate_id,
+            ).order_by(Memory.importance.desc(), Memory.created_at.desc()).limit(20)
+        )).scalars().all()
+
+        # 查找招聘偏好类记忆（全局偏好）
+        preference_memories = (await self.db.execute(
+            select(Memory).where(
+                Memory.tenant_id == tenant_id,
+                Memory.is_active == True,  # noqa: E712
+                Memory.memory_type.in_(["preference", "pattern"]),
+                Memory.category.in_(["candidate", "recruitment"]),
+            ).order_by(Memory.importance.desc()).limit(10)
+        )).scalars().all()
+
+        # 构建注入上下文
+        memory_context: dict[str, Any] = {
+            "candidate_id": candidate_id,
+            "candidate_name": candidate.name or "未知",
+            "direct_memories": [
+                {
+                    "id": str(m.id),
+                    "type": m.memory_type,
+                    "category": m.category,
+                    "content": m.content,
+                    "confidence": m.confidence,
+                    "importance": m.importance,
+                    "source": m.source,
+                    "tags": m.tags,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in direct_memories
+            ],
+            "global_preferences": [
+                {
+                    "id": str(m.id),
+                    "type": m.memory_type,
+                    "content": m.content,
+                    "confidence": m.confidence,
+                    "tags": m.tags,
+                }
+                for m in preference_memories
+            ],
+            "memory_count": len(direct_memories) + len(preference_memories),
+            "injected_at": datetime.utcnow().isoformat(),
+        }
+
+        # 分析偏好决策趋势
+        decision_memories = [m for m in direct_memories if m.memory_type == "decision"]
+        if decision_memories:
+            accept_count = sum(
+                1 for m in decision_memories
+                if "accept" in (m.tags or []) or "通过" in m.content
+            )
+            reject_count = sum(
+                1 for m in decision_memories
+                if "reject" in (m.tags or []) or "拒绝" in m.content
+            )
+            memory_context["decision_trend"] = {
+                "total_decisions": len(decision_memories),
+                "accepted": accept_count,
+                "rejected": reject_count,
+                "trend": "positive" if accept_count > reject_count else "negative",
+            }
+
+        logger.info(
+            "inject_memories: candidate=%s direct=%d preferences=%d",
+            candidate_id, len(direct_memories), len(preference_memories),
+        )
+        return memory_context
+
+    async def generate_academic_profile(
+        self,
+        candidate_id: str,
+        tenant_id: str,
+    ) -> dict[str, Any]:
+        """
+        论文式画像生成 — 多源引用格式、AI推理标签、置信度分层。
+
+        将候选人画像以学术引用格式输出，每个数据点标注来源，
+        附带 AI 推理引擎的推理标签，并按置信度高/中/低分层。
+
+        Args:
+            candidate_id: 候选人 UUID。
+            tenant_id: 租户 ID。
+
+        Returns:
+            学术式画像，结构如下:
+              - abstract: 摘要
+              - sections: 各维度分析（含引用标注）
+              - inference_labels: AI推理标签
+              - confidence_layers: {high/medium/low} 分层
+              - references: 引用来源列表
+        """
+        # 构建基础画像
+        profile = await self.build_profile(candidate_id)
+
+        # 注入记忆
+        memory_context = await self.inject_memories(candidate_id, tenant_id)
+
+        # 生成 AI 推理标签
+        inference_labels = await self._generate_inference_labels(
+            profile, memory_context,
+        )
+
+        # 按置信度分层
+        confidence_layers = self._stratify_confidence(profile)
+
+        # 构建引用格式 sections
+        sections: list[dict[str, Any]] = []
+        sections.append(self._build_basic_info_section(profile))
+        sections.append(self._build_work_experience_section(profile))
+        sections.append(self._build_skills_section(profile))
+        sections.append(self._build_education_section(profile))
+
+        # 记忆引用 section
+        if memory_context.get("direct_memories"):
+            sections.append({
+                "title": "历史决策记录",
+                "citations": [
+                    {
+                        "content": m["content"],
+                        "source": m["source"],
+                        "confidence": m["confidence"],
+                        "reference": f"[M{i+1}]",
+                    }
+                    for i, m in enumerate(memory_context["direct_memories"][:10])
+                ],
+            })
+
+        # 全局偏好引用
+        if memory_context.get("global_preferences"):
+            sections.append({
+                "title": "组织招聘偏好",
+                "citations": [
+                    {
+                        "content": p["content"],
+                        "type": p["type"],
+                        "confidence": p["confidence"],
+                        "reference": f"[P{i+1}]",
+                    }
+                    for i, p in enumerate(memory_context["global_preferences"][:5])
+                ],
+            })
+
+        # 引用来源列表
+        references: list[dict[str, str]] = []
+        for i, resume_ref in enumerate(profile.source_refs):
+            references.append({
+                "id": f"[R{i+1}]",
+                "type": "resume",
+                "source_id": resume_ref,
+                "description": f"简历来源 {resume_ref[:8]}...",
+            })
+        for i, mem in enumerate(memory_context.get("direct_memories", [])[:10]):
+            references.append({
+                "id": f"[M{i+1}]",
+                "type": "memory",
+                "source_id": mem.get("id", ""),
+                "description": f"记忆 {mem.get('type', '')}: {mem.get('content', '')[:50]}...",
+            })
+        for i, pref in enumerate(memory_context.get("global_preferences", [])[:5]):
+            references.append({
+                "id": f"[P{i+1}]",
+                "type": "preference",
+                "source_id": pref.get("id", ""),
+                "description": f"偏好: {pref.get('content', '')[:50]}...",
+            })
+
+        # 构建摘要
+        skill_count = len(profile.merged.skill_cloud)
+        work_count = len(profile.merged.work_timeline)
+        edu_count = len(profile.merged.education)
+        memory_count = memory_context.get("memory_count", 0)
+
+        abstract = (
+            f"候选人画像报告 — {profile.merged.basic_info.get('name', '未知')} "
+            f"[可信度: {profile.credibility_grade} ({profile.overall_credibility:.1f})]\n"
+            f"数据来源: {profile.resume_count} 份简历, {memory_count} 条相关记忆\n"
+            f"画像维度: {skill_count} 项技能, {work_count} 段工作经历, {edu_count} 条教育记录"
+        )
+
+        academic_profile = {
+            "candidate_id": candidate_id,
+            "abstract": abstract,
+            "sections": sections,
+            "inference_labels": inference_labels,
+            "confidence_layers": confidence_layers,
+            "references": references,
+            "meta": {
+                "resume_count": profile.resume_count,
+                "memory_count": memory_count,
+                "credibility_grade": profile.credibility_grade,
+                "credibility_score": profile.overall_credibility,
+                "generated_at": datetime.utcnow().isoformat(),
+            },
+        }
+
+        logger.info(
+            "generate_academic_profile: candidate=%s grade=%s sections=%d refs=%d",
+            candidate_id, profile.credibility_grade, len(sections), len(references),
+        )
+        return academic_profile
+
+    # ── 学术画像辅助方法 ────────────────────────────────────────
+
+    async def _generate_inference_labels(
+        self,
+        profile: CandidateProfile,
+        memory_context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """
+        生成 AI 推理标签 — 基于画像数据和记忆上下文推断隐含信息。
+
+        标签类型: skill_gap / overqualified / career_shift / salary_mismatch 等。
+        """
+        labels: list[dict[str, Any]] = []
+
+        # 技能缺口检测
+        skills = [t.name.lower() for t in profile.merged.skill_cloud]
+        if len(skills) < 3:
+            labels.append({
+                "label": "skill_sparse",
+                "description": "技能标签稀少，可能简历信息不完整",
+                "confidence": 0.6,
+                "layer": "medium",
+            })
+
+        # 职业转型检测
+        work = profile.merged.work_timeline
+        if len(work) >= 2:
+            companies = set(w.company for w in work if w.company)
+            titles = set(w.title for w in work if w.title)
+            if len(titles) >= 3:
+                labels.append({
+                    "label": "career_diverse",
+                    "description": "职业经历涉及多个方向，可能是复合型人才",
+                    "confidence": 0.5,
+                    "layer": "medium",
+                })
+
+        # 决策趋势标签
+        decision_trend = memory_context.get("decision_trend", {})
+        if decision_trend:
+            trend = decision_trend.get("trend", "")
+            if trend == "positive":
+                labels.append({
+                    "label": "historically_favored",
+                    "description": "历史决策记录偏正面，表明HR曾对该候选人有好感",
+                    "confidence": 0.7,
+                    "layer": "high",
+                })
+            elif trend == "negative":
+                labels.append({
+                    "label": "historically_declined",
+                    "description": "历史决策记录偏负面，需关注拒因是否仍然成立",
+                    "confidence": 0.7,
+                    "layer": "high",
+                })
+
+        # 可信度标签
+        if profile.overall_credibility >= 80:
+            labels.append({
+                "label": "high_credibility",
+                "description": "画像可信度高（A级），简历信息充分且一致",
+                "confidence": 0.9,
+                "layer": "high",
+            })
+        elif profile.overall_credibility < 40:
+            labels.append({
+                "label": "low_credibility",
+                "description": "画像可信度较低（D级），建议补充材料验证",
+                "confidence": 0.9,
+                "layer": "high",
+            })
+
+        return labels
+
+    def _stratify_confidence(
+        self, profile: CandidateProfile,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """按置信度高/中/低分层。"""
+        layers: dict[str, list[dict[str, Any]]] = {
+            "high": [],
+            "medium": [],
+            "low": [],
+        }
+
+        # 技能分层
+        for tag in profile.merged.skill_cloud:
+            entry = {
+                "type": "skill",
+                "name": tag.name,
+                "source_count": tag.source_count,
+                "credibility_weight": tag.credibility_weight,
+            }
+            if tag.source_count >= 2 and tag.credibility_weight >= 0.7:
+                layers["high"].append(entry)
+            elif tag.source_count >= 1 and tag.credibility_weight >= 0.5:
+                layers["medium"].append(entry)
+            else:
+                layers["low"].append(entry)
+
+        # 工作经历分层
+        for exp in profile.merged.work_timeline:
+            entry = {
+                "type": "work_experience",
+                "company": exp.company,
+                "title": exp.title,
+            }
+            if exp.start_date and exp.description:
+                layers["high"].append(entry)
+            elif exp.start_date:
+                layers["medium"].append(entry)
+            else:
+                layers["low"].append(entry)
+
+        # 教育分层
+        for edu in profile.merged.education:
+            entry = {
+                "type": "education",
+                "school": edu.school,
+                "degree": edu.degree,
+                "major": edu.major,
+            }
+            if edu.degree and edu.major:
+                layers["high"].append(entry)
+            elif edu.school:
+                layers["medium"].append(entry)
+            else:
+                layers["low"].append(entry)
+
+        return layers
+
+    def _build_basic_info_section(
+        self, profile: CandidateProfile,
+    ) -> dict[str, Any]:
+        """构建基本信息 section（含引用标注）。"""
+        basic = profile.merged.basic_info
+        return {
+            "title": "基本信息",
+            "fields": [
+                {"key": k, "value": v, "reference": f"[R1]"}
+                for k, v in basic.items()
+                if v is not None
+            ],
+        }
+
+    def _build_work_experience_section(
+        self, profile: CandidateProfile,
+    ) -> dict[str, Any]:
+        """构建工作经历 section。"""
+        entries = []
+        for exp in profile.merged.work_timeline:
+            ref = f"[R_source:{exp.source_resume_id[:8]}...]" if exp.source_resume_id else "[R?]"
+            entries.append({
+                "company": exp.company,
+                "title": exp.title,
+                "period": f"{exp.start_date or '?'} - {exp.end_date or '至今'}",
+                "description": exp.description,
+                "reference": ref,
+            })
+        return {"title": "工作经历", "entries": entries}
+
+    def _build_skills_section(
+        self, profile: CandidateProfile,
+    ) -> dict[str, Any]:
+        """构建技能 section。"""
+        skills = []
+        for tag in profile.merged.skill_cloud:
+            skills.append({
+                "name": tag.name,
+                "proficiency": tag.proficiency,
+                "years_of_experience": tag.years_of_experience,
+                "source_count": tag.source_count,
+                "credibility_weight": round(tag.credibility_weight, 2),
+            })
+        return {"title": "技能标签云", "skills": skills}
+
+    def _build_education_section(
+        self, profile: CandidateProfile,
+    ) -> dict[str, Any]:
+        """构建教育背景 section。"""
+        entries = []
+        for edu in profile.merged.education:
+            ref = f"[R_source:{edu.source_resume_id[:8]}...]" if edu.source_resume_id else "[R?]"
+            entries.append({
+                "school": edu.school,
+                "degree": edu.degree,
+                "major": edu.major,
+                "reference": ref,
+            })
+        return {"title": "教育背景", "entries": entries}
