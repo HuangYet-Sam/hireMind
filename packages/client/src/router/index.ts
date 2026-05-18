@@ -144,6 +144,11 @@ const router = createRouter({
           component: () => import('@/views/hr/MatchingView.vue'),
         },
         {
+          path: 'matching/reverse',
+          name: 'hr.reverseMatching',
+          component: () => import('@/views/hr/ReverseMatchingView.vue'),
+        },
+        {
           path: 'interviews',
           name: 'hr.interviews',
           component: () => import('@/views/hr/InterviewsView.vue'),

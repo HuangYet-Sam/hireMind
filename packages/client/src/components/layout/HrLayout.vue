@@ -38,6 +38,7 @@ const menuItems = computed(() => [
   { key: 'hr.resumes', label: t('sidebar.hrResumes') },
   { key: 'hr.candidates', label: t('sidebar.hrCandidates') },
   { key: 'hr.matching', label: t('sidebar.hrMatching') },
+  { key: 'hr.reverseMatching', label: 'Reverse Match' },
   { key: 'hr.interviews', label: t('sidebar.hrInterviews') },
   { key: 'hr.offers', label: t('sidebar.hrOffers') },
   { key: 'hr.analytics', label: t('sidebar.hrAnalytics') },
@@ -51,6 +52,7 @@ const activeKey = computed(() => {
   if (name === 'hr.candidateDetail') return 'hr.candidates'
   if (name === 'hr.interviewDetail') return 'hr.interviews'
   if (name === 'hr.offerDetail') return 'hr.offers'
+  if (name === 'hr.reverseMatching') return 'hr.reverseMatching'
   return name
 })
 
@@ -68,6 +70,7 @@ const breadcrumbItems = computed(() => {
     'hr.candidates': t('sidebar.hrCandidates'),
     'hr.candidateDetail': t('sidebar.hrCandidates'),
     'hr.matching': t('sidebar.hrMatching'),
+    'hr.reverseMatching': 'Reverse Match',
     'hr.interviews': t('sidebar.hrInterviews'),
     'hr.interviewDetail': t('sidebar.hrInterviews'),
     'hr.offers': t('sidebar.hrOffers'),
@@ -152,6 +155,13 @@ const logoPath = '/logo.png'
           </svg>
           <svg v-else-if="item.key === 'hr.matching'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+          </svg>
+          <svg v-else-if="item.key === 'hr.reverseMatching'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 3 21 3 21 8" />
+            <line x1="4" y1="20" x2="21" y2="3" />
+            <polyline points="21 16 21 21 16 21" />
+            <line x1="15" y1="15" x2="21" y2="21" />
+            <line x1="4" y1="4" x2="9" y2="9" />
           </svg>
           <svg v-else-if="item.key === 'hr.interviews'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />

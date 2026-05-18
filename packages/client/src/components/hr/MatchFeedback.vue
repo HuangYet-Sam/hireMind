@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { NButton, NSpace, NRadioGroup, NRadioButton, NPopover, useMessage } from 'naive-ui'
+import { ref, computed } from 'vue'
+import { NButton, NSpace, NRadioGroup, NRadioButton, useMessage } from 'naive-ui'
 import { hrPost } from '@/api/hr/client'
 
 const props = defineProps<{
@@ -14,25 +14,15 @@ const emit = defineEmits<{
 const message = useMessage()
 const rating = ref<'positive' | 'negative' | null>(null)
 const reason = ref('')
-const showReasonPicker = ref(false)
+const pendingRating = ref<'positive' | 'negative' | null>(null)
 const submitting = ref(false)
 
-const negativeReasons = [
-  'Skills mismatch',
-  'Experience gap',
-  'Education mismatch',
-  'Overqualified',
-  'Underqualified',
-  'Other',
-]
-
-const positiveReasons = [
-  'Strong skill match',
-  'Relevant experience',
-  'Good culture fit',
-  'Education aligned',
-  'Other',
-]
+const currentReasons = computed(() => {
+  if (pendingRating.value === 'positive') {
+    return ['Strong skill match', 'Relevant experience', 'Good culture fit', 'Education aligned', 'Other']
+  }
+  return ['Skills mismatch', 'Experience gap', 'Education mismatch', 'Overqualified', 'Underqualified', 'Other']
+})
 
 async function submitFeedback(selectedRating: 'positive' | 'negative') {
   submitting.value = true
@@ -42,7 +32,7 @@ async function submitFeedback(selectedRating: 'positive' | 'negative') {
       reason: reason.value || undefined,
     })
     rating.value = selectedRating
-    showReasonPicker.value = false
+    pendingRating.value = null
     emit('submitted', { rating: selectedRating, reason: reason.value || undefined })
     message.success('Feedback submitted')
   } catch {
@@ -53,19 +43,26 @@ async function submitFeedback(selectedRating: 'positive' | 'negative') {
 }
 
 function handleThumbsUp() {
-  if (rating.value === 'positive') return
+  if (rating.value) return
   reason.value = ''
-  showReasonPicker.value = true
+  pendingRating.value = 'positive'
 }
 
 function handleThumbsDown() {
-  if (rating.value === 'negative') return
+  if (rating.value) return
   reason.value = ''
-  showReasonPicker.value = true
+  pendingRating.value = 'negative'
 }
 
-function confirmFeedback(selectedRating: 'positive' | 'negative') {
-  submitFeedback(selectedRating)
+function confirmFeedback() {
+  if (pendingRating.value) {
+    submitFeedback(pendingRating.value)
+  }
+}
+
+function cancelFeedback() {
+  pendingRating.value = null
+  reason.value = ''
 }
 </script>
 
@@ -91,42 +88,31 @@ function confirmFeedback(selectedRating: 'positive' | 'negative') {
       </NButton>
     </NSpace>
 
-    <NPopover
-      v-if="showReasonPicker && !rating"
-      :show="showReasonPicker && !rating"
-      placement="bottom"
-      trigger="manual"
-      :show-arrow="true"
-    >
-      <template #trigger>
-        <span />
-      </template>
-      <div class="reason-picker">
-        <p class="reason-title">Select a reason (optional)</p>
-        <NRadioGroup v-model:value="reason" size="small">
-          <NSpace vertical :size="4">
-            <NRadioButton
-              v-for="r in (showReasonPicker ? negativeReasons : positiveReasons)"
-              :key="r"
-              :value="r"
-            >
-              {{ r }}
-            </NRadioButton>
-          </NSpace>
-        </NRadioGroup>
-        <NSpace style="margin-top: 8px;">
-          <NButton
-            size="tiny"
-            type="primary"
-            :loading="submitting"
-            @click="confirmFeedback(showReasonPicker ? 'negative' : 'positive')"
+    <div v-if="pendingRating && !rating" class="reason-picker">
+      <p class="reason-title">Select a reason (optional)</p>
+      <NRadioGroup v-model:value="reason" size="small">
+        <NSpace vertical :size="4">
+          <NRadioButton
+            v-for="r in currentReasons"
+            :key="r"
+            :value="r"
           >
-            Submit
-          </NButton>
-          <NButton size="tiny" @click="showReasonPicker = false">Cancel</NButton>
+            {{ r }}
+          </NRadioButton>
         </NSpace>
-      </div>
-    </NPopover>
+      </NRadioGroup>
+      <NSpace style="margin-top: 8px;">
+        <NButton
+          size="tiny"
+          type="primary"
+          :loading="submitting"
+          @click="confirmFeedback"
+        >
+          Submit
+        </NButton>
+        <NButton size="tiny" @click="cancelFeedback">Cancel</NButton>
+      </NSpace>
+    </div>
 
     <div v-if="rating" class="feedback-result">
       <span :class="['feedback-badge', rating]">
@@ -142,13 +128,14 @@ function confirmFeedback(selectedRating: 'positive' | 'negative') {
 
 .match-feedback {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   flex-wrap: wrap;
 
   .feedback-label {
     font-size: 13px;
     color: $text-muted;
+    line-height: 26px;
   }
 
   .feedback-result {
@@ -181,6 +168,10 @@ function confirmFeedback(selectedRating: 'positive' | 'negative') {
 
 .reason-picker {
   min-width: 200px;
+  padding: 8px 12px;
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: $radius-md;
 
   .reason-title {
     font-size: 13px;

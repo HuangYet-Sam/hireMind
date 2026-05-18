@@ -77,6 +77,14 @@ class Interview(Base, PrimaryKeyMixin, TimestampMixin, TenantMixin):
         JSONB, nullable=True, default=list, comment="AI-suggested interview questions"
     )
 
+    # M5: Multi-round interview configuration (JSONB)
+    interview_config: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        default=dict,
+        comment="Interview round configuration: [{round_number, interview_type, interviewer_role, duration_minutes, required}]",
+    )
+
     # Metadata
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, comment="Actual completion time"
@@ -124,3 +132,46 @@ class InterviewFeedback(Base, PrimaryKeyMixin, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<InterviewFeedback interviewer={self.interviewer_id} score={self.score}>"
+
+
+class InterviewPanel(Base, PrimaryKeyMixin, TimestampMixin, TenantMixin):
+    """Interview panel — groups multiple interviewers for a single interview session.
+
+    Enables multi-interviewer coordination with role-based responsibilities.
+    """
+
+    __tablename__ = "interview_panels"
+
+    interview_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Associated interview session",
+    )
+    interviewer_id: Mapped[str] = mapped_column(
+        String(64), nullable=False, comment="Interviewer user ID"
+    )
+    role: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="panelist",
+        comment="Role in panel: lead / panelist / observer",
+    )
+    focus_area: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, comment="Focus area for this interviewer"
+    )
+    status: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="invited",
+        comment="invited / accepted / declined / completed",
+    )
+    responded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="When interviewer responded to invitation"
+    )
+
+    # Relationships
+    interview = relationship("Interview", lazy="selectin")
+
+    def __repr__(self) -> str:
+        return f"<InterviewPanel interview={self.interview_id} interviewer={self.interviewer_id} role={self.role}>"
