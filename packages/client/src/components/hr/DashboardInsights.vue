@@ -1,13 +1,14 @@
 <script setup lang="ts">
 /**
- * DashboardInsights — M7 AI洞察面板组件
+ * DashboardInsights — M8 AI洞察面板组件
  *
  * Props: insights (AIInsight[]), loading
  * 分类展示：📈趋势 / ⚠️风险 / 💡机会 / 🎯建议
- * Emits: refresh
+ * M8 增强：已读/未读标记、忽略按钮、查看全部洞察、计数徽标
+ * Emits: refresh, action, viewAll
  */
 import { computed, ref } from 'vue'
-import { NTag, NButton, NSpin, NEmpty, NSpace } from 'naive-ui'
+import { NTag, NButton, NSpin, NEmpty, NSpace, NBadge } from 'naive-ui'
 import type { AIInsight } from '@/api/hr/dashboard'
 
 const props = defineProps<{
@@ -17,9 +18,38 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   refresh: []
+  action: [insightId: string, action: 'read' | 'unread' | 'ignore' | 'dismiss']
+  viewAll: []
 }>()
 
-// ── Category config ──────────────────────────────────────────
+// ── Read status tracking (local) ────────────────────────────
+
+const readStatusMap = ref<Record<string, { read: boolean; ignored: boolean }>>({})
+
+function getReadStatus(id: string): { read: boolean; ignored: boolean } {
+  return readStatusMap.value[id] ?? { read: false, ignored: false }
+}
+
+function isUnread(insight: AIInsight): boolean {
+  const status = getReadStatus(insight.id)
+  return !status.read && !status.ignored
+}
+
+function isIgnored(insight: AIInsight): boolean {
+  return getReadStatus(insight.id).ignored
+}
+
+// ── Computed ─────────────────────────────────────────────────
+
+const visibleInsights = computed(() => {
+  return props.insights.filter(i => !isIgnored(i))
+})
+
+const unreadCount = computed(() => {
+  return props.insights.filter(i => isUnread(i)).length
+})
+
+// ── Category config ─────────────────────────────────────────
 
 interface CategoryConfig {
   icon: string
@@ -38,7 +68,7 @@ const categoryMap: Record<string, CategoryConfig> = {
 
 const groupedInsights = computed(() => {
   const groups: Record<string, AIInsight[]> = {}
-  for (const insight of props.insights) {
+  for (const insight of visibleInsights.value) {
     const cat = insight.category
     if (!groups[cat]) groups[cat] = []
     groups[cat].push(insight)
@@ -57,9 +87,21 @@ const sortedCategories = computed(() => {
 const activeFilter = ref<string>('all')
 
 const filteredInsights = computed(() => {
-  if (activeFilter.value === 'all') return props.insights
-  return props.insights.filter(i => i.category === activeFilter.value)
+  if (activeFilter.value === 'all') return visibleInsights.value
+  return visibleInsights.value.filter(i => i.category === activeFilter.value)
 })
+
+// ── Actions ──────────────────────────────────────────────────
+
+function markAsRead(id: string) {
+  readStatusMap.value[id] = { read: true, ignored: false }
+  emit('action', id, 'read')
+}
+
+function ignoreInsight(id: string) {
+  readStatusMap.value[id] = { read: false, ignored: true }
+  emit('action', id, 'ignore')
+}
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -98,8 +140,20 @@ function getConfidenceLabel(confidence: number): string {
 
 <template>
   <div class="dashboard-insights">
-    <!-- Header with filters and refresh -->
+    <!-- Header with filters, badge count, and refresh -->
     <div class="insights-header">
+      <div class="insights-title-row">
+        <h4 class="insights-panel-title">
+          AI 洞察
+          <NBadge
+            v-if="unreadCount > 0"
+            :value="unreadCount"
+            :max="99"
+            type="info"
+            class="insight-badge"
+          />
+        </h4>
+      </div>
       <div class="insights-filters">
         <NButton
           text
@@ -108,7 +162,7 @@ function getConfidenceLabel(confidence: number): string {
           class="filter-btn"
           @click="activeFilter = 'all'"
         >
-          全部 ({{ insights.length }})
+          全部 ({{ visibleInsights.length }})
         </NButton>
         <NButton
           v-for="cat in sortedCategories"
@@ -123,13 +177,25 @@ function getConfidenceLabel(confidence: number): string {
           ({{ groupedInsights[cat]?.length ?? 0 }})
         </NButton>
       </div>
-      <NButton text size="small" class="refresh-btn" @click="emit('refresh')">
-        🔄 刷新
-      </NButton>
+      <NSpace :size="4" align="center">
+        <NButton text size="small" class="refresh-btn" @click="emit('refresh')">
+          🔄 刷新
+        </NButton>
+        <NButton
+          v-if="insights.length > 0"
+          text
+          size="small"
+          type="primary"
+          class="view-all-btn"
+          @click="emit('viewAll')"
+        >
+          查看全部 →
+        </NButton>
+      </NSpace>
     </div>
 
     <NSpin :show="loading">
-      <div v-if="!insights.length" class="insights-empty">
+      <div v-if="!visibleInsights.length" class="insights-empty">
         <NEmpty description="暂无 AI 洞察" size="small" />
       </div>
 
@@ -138,8 +204,14 @@ function getConfidenceLabel(confidence: number): string {
           v-for="insight in filteredInsights"
           :key="insight.id"
           class="insight-card"
-          :class="`insight-${insight.category}`"
+          :class="[
+            `insight-${insight.category}`,
+            { 'insight-unread': isUnread(insight) },
+          ]"
         >
+          <!-- Unread dot indicator -->
+          <div v-if="isUnread(insight)" class="unread-indicator" />
+
           <!-- Card header -->
           <div class="insight-card-header">
             <div class="insight-category">
@@ -152,9 +224,28 @@ function getConfidenceLabel(confidence: number): string {
                 {{ getCategoryConfig(insight.category).label }}
               </NTag>
             </div>
-            <span v-if="insight.created_at" class="insight-time">
-              {{ formatTimestamp(insight.created_at) }}
-            </span>
+            <div class="insight-card-actions">
+              <span v-if="insight.created_at" class="insight-time">
+                {{ formatTimestamp(insight.created_at) }}
+              </span>
+              <NButton
+                v-if="isUnread(insight)"
+                text
+                size="tiny"
+                class="action-btn"
+                @click.stop="markAsRead(insight.id)"
+              >
+                ✓
+              </NButton>
+              <NButton
+                text
+                size="tiny"
+                class="action-btn ignore-btn"
+                @click.stop="ignoreInsight(insight.id)"
+              >
+                忽略
+              </NButton>
+            </div>
           </div>
 
           <!-- Card title -->
@@ -187,6 +278,13 @@ function getConfidenceLabel(confidence: number): string {
           </div>
         </div>
       </div>
+
+      <!-- View all button at bottom -->
+      <div v-if="insights.length > filteredInsights.length" class="view-all-footer">
+        <NButton text size="small" type="primary" @click="emit('viewAll')">
+          查看全部洞察 ({{ insights.length }}) →
+        </NButton>
+      </div>
     </NSpin>
   </div>
 </template>
@@ -203,12 +301,33 @@ function getConfidenceLabel(confidence: number): string {
 // Header
 .insights-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 8px;
   padding-bottom: 12px;
   border-bottom: 1px solid $border-light;
   margin-bottom: 12px;
+}
+
+.insights-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.insights-panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: $text-primary;
+  margin: 0;
+  display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.insight-badge {
+  :deep(.n-badge-sup) {
+    font-size: 10px;
+  }
 }
 
 .insights-filters {
@@ -233,6 +352,11 @@ function getConfidenceLabel(confidence: number): string {
   }
 }
 
+.view-all-btn {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
 .insights-empty {
   padding: 32px 0;
 }
@@ -249,10 +373,12 @@ function getConfidenceLabel(confidence: number): string {
 // Insight card
 .insight-card {
   padding: 12px;
+  padding-left: 16px;
   border-radius: $radius-sm;
   border: 1px solid $border-light;
   background: $bg-card;
   transition: border-color $transition-fast, box-shadow $transition-fast;
+  position: relative;
 
   &:hover {
     border-color: $border-color;
@@ -274,6 +400,21 @@ function getConfidenceLabel(confidence: number): string {
   &.insight-suggestion {
     border-left: 3px solid var(--warning);
   }
+
+  &.insight-unread {
+    background: rgba(74, 144, 217, 0.03);
+  }
+}
+
+// Unread indicator (blue dot)
+.unread-indicator {
+  position: absolute;
+  top: 14px;
+  left: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4a90d9;
 }
 
 .insight-card-header {
@@ -281,6 +422,29 @@ function getConfidenceLabel(confidence: number): string {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 6px;
+  gap: 8px;
+}
+
+.insight-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.action-btn {
+  font-size: 11px;
+  padding: 0 4px;
+  color: $text-muted;
+
+  &:hover {
+    color: $text-primary;
+  }
+}
+
+.ignore-btn {
+  &:hover {
+    color: var(--warning);
+  }
 }
 
 .insight-time {
@@ -364,5 +528,14 @@ function getConfidenceLabel(confidence: number): string {
   .action-text {
     flex: 1;
   }
+}
+
+// View all footer
+.view-all-footer {
+  display: flex;
+  justify-content: center;
+  padding-top: 12px;
+  margin-top: 8px;
+  border-top: 1px solid $border-light;
 }
 </style>

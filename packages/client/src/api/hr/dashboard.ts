@@ -1,5 +1,5 @@
 /**
- * Dashboard API — M7 Enhanced
+ * Dashboard API — M8 Enhanced
  *
  * GET  /dashboard/todos         — 待办清单
  * GET  /dashboard/schedule      — 今日日程
@@ -12,6 +12,8 @@
  * GET  /dashboard/insights      — AI洞察 (新接口)
  * POST /dashboard/report/daily  — 生成日报
  * POST /dashboard/report/weekly — 生成周报
+ * M8:  GET  /dashboard/insight-history — 洞察历史
+ * M8:  POST /dashboard/insight/:id/:action — 洞察操作
  */
 import { hrGet, hrPost } from './client'
 
@@ -145,6 +147,40 @@ export interface ReportResponse {
   generated_at: string
 }
 
+// ── M8 New Types ─────────────────────────────────────────────
+
+/** 洞察历史参数 */
+export interface InsightHistoryParams {
+  page?: number
+  page_size?: number
+  category?: string
+  status?: 'all' | 'read' | 'unread' | 'ignored'
+  date_from?: string
+  date_to?: string
+}
+
+/** 洞察历史条目 */
+export interface InsightHistoryItem {
+  id: string
+  category: string
+  title: string
+  content: string
+  confidence: number
+  action_suggestion?: string
+  created_at: string
+  read: boolean
+  ignored: boolean
+}
+
+/** 洞察历史响应 */
+export interface InsightHistoryResponse {
+  items: InsightHistoryItem[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
 // ── API Functions ────────────────────────────────────────────
 
 /** 获取待办清单 */
@@ -207,4 +243,19 @@ export async function generateDailyReport(): Promise<ReportResponse> {
 /** 生成周报 */
 export async function generateWeeklyReport(): Promise<ReportResponse> {
   return hrPost<ReportResponse>('/dashboard/report/weekly')
+}
+
+// ── M8 New API Functions ─────────────────────────────────────
+
+/** 获取洞察历史记录（分页） */
+export async function fetchInsightHistory(params?: InsightHistoryParams): Promise<InsightHistoryResponse> {
+  return hrGet<InsightHistoryResponse>('/dashboard/insight-history', params as Record<string, string>)
+}
+
+/** 更新洞察操作（标记已读/未读/忽略/关闭） */
+export async function updateInsightAction(
+  insightId: string,
+  action: 'read' | 'unread' | 'ignore' | 'dismiss',
+): Promise<{ ok: boolean }> {
+  return hrPost<{ ok: boolean }>(`/dashboard/insight/${insightId}/${action}`)
 }

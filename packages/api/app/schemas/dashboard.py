@@ -240,3 +240,175 @@ class ReportResponse(BaseModel):
     concerns: list[str]
     recommendations: list[str]
     generated_at: datetime
+
+
+# ══════════════════════════════════════════════════════════════════
+# M8: Analytics + AI Enhancement Schemas
+# ══════════════════════════════════════════════════════════════════
+
+
+class FunnelDrilldown(BaseModel):
+    """漏斗钻取"""
+
+    stage: str
+    items: list[dict]  # 钻取明细
+    sub_funnel: list[FunnelStage] | None  # 子漏斗
+
+
+class ComparisonData(BaseModel):
+    """同比环比"""
+
+    current: float
+    previous: float
+    change: float
+    change_percent: float
+    period_label: str
+
+
+class PositionMetrics(BaseModel):
+    """岗位级指标"""
+
+    position_id: UUID
+    position_title: str
+    resume_count: int
+    match_count: int
+    interview_count: int
+    offer_count: int
+    hire_count: int
+    avg_time_to_hire: float | None  # 天
+    match_quality_score: float | None
+    conversion_rate: float
+
+
+class ProactiveScenario(BaseModel):
+    """主动式AI场景"""
+
+    scenario_type: str  # resume_arrival/match_anomaly/interview_timeout/offer_stale/funnel_bottleneck/silent_activation/daily_report/weekly_report
+    title: str
+    description: str
+    trigger_condition: dict
+    action_template: str
+
+
+class ProactiveAlert(BaseModel):
+    """主动推送"""
+
+    id: str
+    scenario_type: str
+    title: str
+    content: str
+    severity: str  # info/warning/urgent
+    entity_id: UUID | None
+    entity_type: str | None
+    action_suggestion: str | None
+    created_at: datetime
+
+
+class TrendPrediction(BaseModel):
+    """趋势预测"""
+
+    historical: list[TrendDataPoint]
+    predicted: list[TrendDataPoint]
+    confidence: float
+    model_type: str
+
+
+class ExportRequest(BaseModel):
+    """导出请求"""
+
+    export_type: str  # excel/pdf
+    report_type: str  # funnel/trends/source/position/full
+    date_from: str | None
+    date_to: str | None
+    position_id: UUID | None
+
+
+class SnapshotData(BaseModel):
+    """数据快照"""
+
+    id: UUID
+    snapshot_date: str
+    metrics: DashboardMetrics
+    funnel: FunnelResponse
+    created_at: datetime
+
+
+# ── M8: Funnel Comparison ────────────────────────────────────
+
+class FunnelComparisonResponse(BaseModel):
+    """漏斗同比环比"""
+
+    current: FunnelResponse
+    comparison: ComparisonData
+    comparison_period: str
+
+
+# ── M8: Trend Prediction ─────────────────────────────────────
+
+class PredictionPoint(BaseModel):
+    """预测数据点"""
+
+    date: str
+    predicted: float
+    confidence_lower: float
+    confidence_upper: float
+
+
+class TrendPredictionResponse(BaseModel):
+    """趋势预测"""
+
+    actual: list[TrendDataPoint]
+    predicted: list[PredictionPoint]
+    method: str  # "linear_regression"
+    confidence: float
+
+
+# ── M8: Position Analytics ────────────────────────────────────
+
+class PositionAnalytics(BaseModel):
+    """岗位级分析"""
+
+    position_id: UUID
+    position_title: str
+    funnel: FunnelResponse
+    avg_match_score: float
+    avg_time_to_hire: float | None  # 天
+    interview_pass_rate: float
+    offer_accept_rate: float
+
+
+# ── M8: Channel ROI ──────────────────────────────────────────
+
+class ChannelROI(BaseModel):
+    """渠道ROI"""
+
+    channel: str
+    resumes: int
+    interviews: int
+    offers: int
+    hires: int
+    cost: float | None
+    cost_per_hire: float | None
+    roi_score: float
+
+
+# ── M8: Insight Actions ──────────────────────────────────────
+
+class InsightAction(BaseModel):
+    """洞察操作"""
+
+    insight_id: str
+    action: str  # read/ignore/dismiss
+    action_at: datetime
+
+
+# ── M8: Report Export ────────────────────────────────────────
+
+class ReportExportRequest(BaseModel):
+    """报表导出请求"""
+
+    format: str  # excel/pdf
+    report_type: str  # funnel/trend/position/channel/full
+    date_from: str
+    date_to: str
+    position_id: UUID | None = None

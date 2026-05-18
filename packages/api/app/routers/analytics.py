@@ -339,3 +339,326 @@ async def get_position_performance(
     )
 
     return {"positions": performance_data}
+
+
+# ══════════════════════════════════════════════════════════════════
+# M8 Enhancement Endpoints
+# ══════════════════════════════════════════════════════════════════
+
+
+# ── M8: Funnel Comparison ───────────────────────────────────────
+
+@router.get(
+    "/funnel/comparison",
+    summary="Funnel comparison (同比环比)",
+)
+async def get_funnel_comparison(
+    db: DbSession,
+    current_user: CurrentUserDep,
+    position_id: UUID | None = Query(None, description="Filter by position"),
+    period: str = Query("monthly", description="Base period: daily/weekly/monthly"),
+    compare_with: str = Query(
+        "last_month",
+        description="Compare with: last_week / last_month / last_year",
+    ),
+):
+    """
+    Recruitment funnel comparison (同比环比分析).
+
+    Compares current funnel metrics against a previous period
+    (last week / last month / last year) and returns change percentages.
+
+    Returns:
+        FunnelComparisonResponse with current funnel, comparison data,
+        and change percentages.
+    """
+    svc = AnalyticsService(db)
+    return await svc.get_funnel_comparison(
+        position_id=position_id,
+        period=period,
+        compare_with=compare_with,
+        tenant_id=current_user.tenant_id,
+    )
+
+
+# ── M8: Trend Prediction ────────────────────────────────────────
+
+@router.get(
+    "/trends/prediction",
+    summary="Trend prediction (趋势预测)",
+)
+async def get_trend_prediction(
+    db: DbSession,
+    current_user: CurrentUserDep,
+    period: str = Query("weekly", description="Grouping: daily/weekly/monthly"),
+    weeks_ahead: int = Query(2, description="Weeks to predict ahead", ge=1, le=12),
+):
+    """
+    Recruitment trend prediction using linear regression.
+
+    Uses recent historical data (last 12 weeks) to predict future
+    recruitment trends with confidence intervals.
+
+    Returns:
+        TrendPredictionResponse with actual data, predicted data points,
+        method name, and confidence score.
+    """
+    svc = AnalyticsService(db)
+    return await svc.get_trend_prediction(
+        period=period,
+        weeks_ahead=weeks_ahead,
+        tenant_id=current_user.tenant_id,
+    )
+
+
+# ── M8: Position Analytics ──────────────────────────────────────
+
+@router.get(
+    "/positions/{position_id}/analytics",
+    summary="Position-level analytics",
+)
+async def get_position_analytics(
+    position_id: UUID,
+    db: DbSession,
+    current_user: CurrentUserDep,
+):
+    """
+    Comprehensive analytics for a single position.
+
+    Returns:
+        PositionAnalytics with funnel, match score, time-to-hire,
+        interview pass rate, and offer accept rate.
+    """
+    svc = AnalyticsService(db)
+    return await svc.get_position_analytics(
+        position_id=position_id,
+        tenant_id=current_user.tenant_id,
+    )
+
+
+# ── M8: Channel ROI (Enhanced) ──────────────────────────────────
+
+@router.get(
+    "/channel-roi-enhanced",
+    summary="Enhanced channel ROI analysis",
+)
+async def get_channel_roi_enhanced(
+    db: DbSession,
+    current_user: CurrentUserDep,
+    date_from: str | None = Query(None, description="Start date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="End date (YYYY-MM-DD)"),
+):
+    """
+    Enhanced channel ROI analysis with date filtering.
+
+    Returns per-channel structured data with resumes, interviews,
+    offers, hires, cost, cost per hire, and ROI score.
+
+    Returns:
+        Dict with list of ChannelROI data.
+    """
+    svc = AnalyticsService(db)
+    return await svc.get_channel_roi_enhanced(
+        tenant_id=current_user.tenant_id,
+        date_from=date_from,
+        date_to=date_to,
+    )
+
+
+# ── M8: Insight Scan ────────────────────────────────────────────
+
+@router.post(
+    "/insights/scan",
+    summary="Trigger AI insight scan",
+)
+async def trigger_insight_scan(
+    db: DbSession,
+    current_user: CurrentUserDep,
+):
+    """
+    Trigger AI insight scan.
+
+    Runs all 8 trigger condition checks:
+    1. Resume arrival peak
+    2. Match score anomaly
+    3. Interview feedback timeout
+    4. Offer stale
+    5. Funnel bottleneck
+    6. Silent candidate activation
+    7. Position overdue
+    8. Daily/weekly report
+
+    Returns:
+        List of generated insights with severity, suggestions, and entity references.
+    """
+    from app.services.insight_engine import InsightEngine
+
+    engine = InsightEngine(db)
+
+    # Run trigger-based scan
+    triggered = await engine.scan_and_generate(current_user.tenant_id)
+
+    # Also generate proactive insights
+    proactive = await engine.generate_proactive_insights(current_user.tenant_id)
+
+    return {
+        "triggered_insights": triggered,
+        "proactive_insights": proactive,
+        "total_insights": len(triggered) + len(proactive),
+    }
+
+
+# ── M8: Insight History ─────────────────────────────────────────
+
+@router.get(
+    "/insights/history",
+    summary="Insight history",
+)
+async def get_insight_history(
+    db: DbSession,
+    current_user: CurrentUserDep,
+    status: str | None = Query(None, description="Filter by status: active/read/ignore/dismiss"),
+    category: str | None = Query(None, description="Filter by category: trend/risk/opportunity/summary/alert"),
+    trigger_type: str | None = Query(None, description="Filter by trigger type"),
+    limit: int = Query(50, description="Max results", ge=1, le=200),
+):
+    """
+    Query insight history with optional filters.
+
+    Returns paginated list of past insights sorted by creation time.
+    """
+    from app.services.insight_engine import InsightEngine
+
+    engine = InsightEngine(db)
+    return await engine.get_insight_history(
+        tenant_id=current_user.tenant_id,
+        filters={
+            "status": status,
+            "category": category,
+            "trigger_type": trigger_type,
+            "limit": limit,
+        },
+    )
+
+
+# ── M8: Insight Action ──────────────────────────────────────────
+
+@router.patch(
+    "/insights/{insight_id}/action",
+    summary="Mark insight action",
+)
+async def mark_insight_action(
+    insight_id: str,
+    db: DbSession,
+    current_user: CurrentUserDep,
+    action: str = Query(..., description="Action: read / ignore / dismiss"),
+):
+    """
+    Mark an insight with an action (read / ignore / dismiss).
+
+    Args:
+        insight_id: Insight UUID.
+        action: Action to perform.
+    """
+    from app.services.insight_engine import InsightEngine
+
+    engine = InsightEngine(db)
+    result = await engine.mark_insight(insight_id, action)
+    return result
+
+
+# ── M8: Report Export ───────────────────────────────────────────
+
+@router.post(
+    "/reports/export",
+    summary="Export analytics report",
+)
+async def export_report(
+    db: DbSession,
+    current_user: CurrentUserDep,
+    report_format: str = Query("excel", description="Format: excel / pdf"),
+    report_type: str = Query("full", description="Type: funnel/trend/position/channel/full"),
+    date_from: str | None = Query(None, description="Start date (YYYY-MM-DD)"),
+    date_to: str | None = Query(None, description="End date (YYYY-MM-DD)"),
+    position_id: UUID | None = Query(None, description="Filter by position"),
+):
+    """
+    Generate and export an analytics report.
+
+    Supports Excel (openpyxl) and PDF (WeasyPrint) output.
+    Falls back to JSON mock if libraries are not installed.
+    """
+    from app.services.report_service import ReportService
+
+    svc = ReportService(db)
+    filters = {}
+    if date_from:
+        filters["date_from"] = date_from
+    if date_to:
+        filters["date_to"] = date_to
+    if position_id:
+        filters["position_id"] = str(position_id)
+
+    if report_format == "pdf":
+        return await svc.generate_pdf_report(
+            report_type=report_type,
+            filters=filters,
+            tenant_id=current_user.tenant_id,
+        )
+    else:
+        return await svc.generate_excel_report(
+            report_type=report_type,
+            filters=filters,
+            tenant_id=current_user.tenant_id,
+        )
+
+
+# ── M8: Report Download ─────────────────────────────────────────
+
+@router.get(
+    "/reports/{report_id}/download",
+    summary="Download generated report",
+)
+async def download_report(
+    report_id: str,
+    db: DbSession,
+    current_user: CurrentUserDep,
+):
+    """
+    Download a previously generated report by ID.
+
+    Returns the file path for file-based reports, or the
+    JSON data for mock reports.
+    """
+    from app.services.report_service import ReportService
+
+    svc = ReportService(db)
+    report = await svc.get_report(report_id)
+
+    if report is None:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=404,
+            content={"error": "Report not found", "report_id": report_id},
+        )
+
+    # If file-based, return file download
+    file_path = report.get("file_path")
+    if file_path:
+        from fastapi.responses import FileResponse
+        import os
+        if os.path.exists(file_path):
+            media_type = (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                if report.get("format") == "excel"
+                else "application/pdf"
+            )
+            filename = os.path.basename(file_path)
+            return FileResponse(
+                path=file_path,
+                media_type=media_type,
+                filename=filename,
+            )
+
+    # Otherwise return the stored data
+    return report
