@@ -1,16 +1,83 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { NCard, NSelect, NButton, NSpin, NEmpty, NGrid, NGridItem, NProgress, useMessage } from 'naive-ui'
+import { ref, computed, onMounted } from 'vue'
+import {
+  NCard, NSelect, NButton, NSpin, NEmpty, NGrid, NGridItem, NProgress,
+  NSpace, NTag, NInput, NRadioGroup, NRadioButton, NTooltip, useMessage,
+} from 'naive-ui'
 import { usePositionStore } from '@/stores/hr/positions'
 import { useMatchingStore } from '@/stores/hr/matching'
+import MatchScore from '@/components/hr/MatchScore.vue'
+import type { MatchResultItem, CandidateMatchResultItem } from '@/api/hr/matching'
+
+type MatchItem = MatchResultItem | CandidateMatchResultItem
 
 const positionStore = usePositionStore()
 const matchingStore = useMatchingStore()
 const selectedPositionId = ref<string | null>(null)
 const message = useMessage()
+const viewMode = ref<'list' | 'kanban'>('list')
+const sortBy = ref<'score_desc' | 'score_asc' | 'name_asc'>('score_desc')
+const filterTier = ref<'' | 'strong' | 'good' | 'fair' | 'poor'>('')
+const searchKeyword = ref('')
 
 onMounted(() => {
   positionStore.fetchPositions({ status: 'open' })
+})
+
+function getScore(item: MatchItem): number {
+  return item.overall_score
+}
+
+function getName(item: MatchItem): string {
+  if ('candidate_name' in item) return item.candidate_name || 'Unknown'
+  if ('position_title' in item) return item.position_title || 'Unknown'
+  return 'Unknown'
+}
+
+function getTier(score: number): 'strong' | 'good' | 'fair' | 'poor' {
+  if (score >= 0.8) return 'strong'
+  if (score >= 0.6) return 'good'
+  if (score >= 0.4) return 'fair'
+  return 'poor'
+}
+
+const tierMeta: Record<string, { label: string; color: string }> = {
+  strong: { label: 'Strong (>80)', color: '#18a058' },
+  good: { label: 'Good (60-80)', color: '#2080f0' },
+  fair: { label: 'Fair (40-60)', color: '#f0a020' },
+  poor: { label: 'Poor (<40)', color: '#d03050' },
+}
+
+const sortedAndFiltered = computed(() => {
+  let items = [...matchingStore.matches]
+
+  if (searchKeyword.value) {
+    const kw = searchKeyword.value.toLowerCase()
+    items = items.filter(item => getName(item).toLowerCase().includes(kw))
+  }
+
+  if (filterTier.value) {
+    items = items.filter(item => getTier(getScore(item)) === filterTier.value)
+  }
+
+  items.sort((a, b) => {
+    switch (sortBy.value) {
+      case 'score_desc': return getScore(b) - getScore(a)
+      case 'score_asc': return getScore(a) - getScore(b)
+      case 'name_asc': return getName(a).localeCompare(getName(b))
+      default: return 0
+    }
+  })
+
+  return items
+})
+
+const kanbanGroups = computed(() => {
+  const groups: Record<string, MatchItem[]> = { strong: [], good: [], fair: [], poor: [] }
+  sortedAndFiltered.value.forEach(item => {
+    groups[getTier(getScore(item))].push(item)
+  })
+  return groups
 })
 
 async function handleMatch() {
@@ -18,63 +85,276 @@ async function handleMatch() {
   try {
     const result = await matchingStore.matchCandidatesForPosition(selectedPositionId.value)
     if (result.length === 0) {
-      message.warning('未找到匹配的候选人，请尝试其他岗位')
+      message.warning('No matching candidates found for this position')
     }
   } catch {
-    message.error('匹配失败，请稍后重试')
+    message.error('Matching failed, please try again later')
   }
+}
+
+function getProgressBarColor(score: number): string {
+  return tierMeta[getTier(score)].color
+}
+
+function getMatchedSkills(item: MatchItem): string[] {
+  return ('matched_skills' in item && item.matched_skills) ? item.matched_skills : []
+}
+
+function getMissingSkills(item: MatchItem): string[] {
+  return ('missing_skills' in item && item.missing_skills) ? item.missing_skills : []
+}
+
+function getExplanation(item: MatchItem): string | null {
+  return item.explanation ?? null
+}
+
+const sortOptions = [
+  { label: 'Score ↓', value: 'score_desc' },
+  { label: 'Score ↑', value: 'score_asc' },
+  { label: 'Name A-Z', value: 'name_asc' },
+]
+
+const tierFilterOptions = [
+  { label: 'All', value: '' },
+  { label: 'Strong (>80)', value: 'strong' },
+  { label: 'Good (60-80)', value: 'good' },
+  { label: 'Fair (40-60)', value: 'fair' },
+  { label: 'Poor (<40)', value: 'poor' },
+]
+
+function getItemKey(item: MatchItem): string {
+  if ('candidate_id' in item) return item.candidate_id
+  return item.position_id
 }
 </script>
 
 <template>
   <div class="matching-view">
     <header class="page-header">
-      <h2 class="header-title">智能匹配</h2>
-      <p class="header-desc">AI驱动的岗位-候选人匹配矩阵</p>
+      <div>
+        <h2 class="header-title">Smart Matching</h2>
+        <p class="header-desc">AI-powered position-candidate matching matrix</p>
+      </div>
     </header>
 
-    <!-- Position selector -->
     <div class="match-controls">
       <NSelect
         v-model:value="selectedPositionId"
         :options="positionStore.positions.map(p => ({ label: p.title, value: p.id }))"
-        placeholder="选择一个在招岗位"
+        placeholder="Select an open position"
         style="width: 300px;"
       />
       <NButton type="primary" :disabled="!selectedPositionId" :loading="matchingStore.loading" @click="handleMatch">
-        开始匹配
+        Start Matching
       </NButton>
     </div>
 
-    <!-- Match Matrix -->
-    <NSpin :show="matchingStore.loading">
-      <div v-if="matchingStore.matches.length" class="match-matrix">
-        <NGrid :cols="1" :y-gap="12">
-          <NGridItem v-for="match in matchingStore.matches" :key="match.candidate_id || match.position_id">
-            <NCard size="small" class="match-row">
-              <div class="match-info">
-                <span class="candidate-name">{{ match.candidate_name }}</span>
+    <template v-if="matchingStore.matches.length">
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <NRadioGroup v-model:value="viewMode" size="small">
+            <NRadioButton value="list">List</NRadioGroup>
+            <NRadioButton value="kanban">Kanban</NRadioButton>
+          </NRadioGroup>
+
+          <NSelect
+            v-model:value="sortBy"
+            :options="sortOptions"
+            size="small"
+            style="width: 130px;"
+          />
+
+          <NSelect
+            v-model:value="filterTier"
+            :options="tierFilterOptions"
+            size="small"
+            style="width: 140px;"
+          />
+
+          <NInput
+            v-model:value="searchKeyword"
+            placeholder="Search name..."
+            clearable
+            size="small"
+            style="width: 180px;"
+          />
+        </div>
+
+        <span class="result-count">{{ sortedAndFiltered.length }} results</span>
+      </div>
+
+      <NSpin :show="matchingStore.loading">
+        <!-- LIST VIEW -->
+        <div v-if="viewMode === 'list'" class="list-view">
+          <NGrid :cols="1" :y-gap="10">
+            <NGridItem v-for="match in sortedAndFiltered" :key="getItemKey(match)">
+              <NCard size="small" class="match-row">
+                <div class="match-row-inner">
+                  <div class="match-row-score">
+                    <MatchScore :score="getScore(match)" size="small" />
+                  </div>
+                  <div class="match-row-content">
+                    <div class="match-row-header">
+                      <span class="candidate-name">{{ getName(match) }}</span>
+                      <NTag
+                        size="small"
+                        :bordered="false"
+                        :color="{ color: tierMeta[getTier(getScore(match))].color + '18', textColor: tierMeta[getTier(getScore(match))].color }"
+                      >
+                        {{ tierMeta[getTier(getScore(match))].label }}
+                      </NTag>
+                    </div>
+
+                    <div class="score-bar-row">
+                      <span class="score-bar-label">Overall</span>
+                      <NProgress
+                        type="line"
+                        :percentage="Math.round(getScore(match) * 100)"
+                        :color="getProgressBarColor(getScore(match))"
+                        :height="14"
+                        :border-radius="7"
+                        :show-indicator="false"
+                        style="flex: 1;"
+                      />
+                      <span class="score-bar-value">{{ Math.round(getScore(match) * 100) }}</span>
+                    </div>
+
+                    <div v-if="'skill_score' in match && match.skill_score != null" class="score-bar-row sub-score">
+                      <span class="score-bar-label">Skills</span>
+                      <NProgress
+                        type="line"
+                        :percentage="Math.round(match.skill_score * 100)"
+                        :color="getProgressBarColor(match.skill_score)"
+                        :height="10"
+                        :border-radius="5"
+                        :show-indicator="false"
+                        style="flex: 1;"
+                      />
+                      <span class="score-bar-value">{{ Math.round(match.skill_score * 100) }}</span>
+                    </div>
+
+                    <div v-if="'experience_score' in match && match.experience_score != null" class="score-bar-row sub-score">
+                      <span class="score-bar-label">Experience</span>
+                      <NProgress
+                        type="line"
+                        :percentage="Math.round(match.experience_score * 100)"
+                        :color="getProgressBarColor(match.experience_score)"
+                        :height="10"
+                        :border-radius="5"
+                        :show-indicator="false"
+                        style="flex: 1;"
+                      />
+                      <span class="score-bar-value">{{ Math.round(match.experience_score * 100) }}</span>
+                    </div>
+
+                    <div v-if="'education_score' in match && match.education_score != null" class="score-bar-row sub-score">
+                      <span class="score-bar-label">Education</span>
+                      <NProgress
+                        type="line"
+                        :percentage="Math.round(match.education_score * 100)"
+                        :color="getProgressBarColor(match.education_score)"
+                        :height="10"
+                        :border-radius="5"
+                        :show-indicator="false"
+                        style="flex: 1;"
+                      />
+                      <span class="score-bar-value">{{ Math.round(match.education_score * 100) }}</span>
+                    </div>
+
+                    <div v-if="getMatchedSkills(match).length" class="skills-row">
+                      <NTag v-for="skill in getMatchedSkills(match).slice(0, 6)" :key="skill" size="tiny" type="success" style="margin-right: 4px;">
+                        {{ skill }}
+                      </NTag>
+                      <NTag v-if="getMatchedSkills(match).length > 6" size="tiny" style="margin-right: 4px;">
+                        +{{ getMatchedSkills(match).length - 6 }}
+                      </NTag>
+                    </div>
+
+                    <div v-if="getMissingSkills(match).length" class="missing-skills-row">
+                      <span class="missing-label">Missing:</span>
+                      <NTag v-for="skill in getMissingSkills(match).slice(0, 4)" :key="skill" size="tiny" type="error" style="margin-right: 4px;">
+                        {{ skill }}
+                      </NTag>
+                      <NTag v-if="getMissingSkills(match).length > 4" size="tiny" style="margin-right: 4px;">
+                        +{{ getMissingSkills(match).length - 4 }}
+                      </NTag>
+                    </div>
+
+                    <div v-if="getExplanation(match)" class="match-explanation">
+                      {{ getExplanation(match) }}
+                    </div>
+                  </div>
+                </div>
+              </NCard>
+            </NGridItem>
+          </NGrid>
+        </div>
+
+        <!-- KANBAN VIEW -->
+        <div v-else class="kanban-view">
+          <div v-for="tier in (['strong', 'good', 'fair', 'poor'] as const)" :key="tier" class="kanban-column">
+            <div class="kanban-column-header" :style="{ borderTopColor: tierMeta[tier].color }">
+              <span class="kanban-column-title" :style="{ color: tierMeta[tier].color }">
+                {{ tierMeta[tier].label }}
+              </span>
+              <span class="kanban-column-count">{{ kanbanGroups[tier].length }}</span>
+            </div>
+            <div class="kanban-column-body">
+              <NCard
+                v-for="match in kanbanGroups[tier]"
+                :key="getItemKey(match)"
+                size="small"
+                class="kanban-card"
+              >
+                <div class="kanban-card-header">
+                  <span class="kanban-card-name">{{ getName(match) }}</span>
+                  <NTooltip>
+                    <template #trigger>
+                      <span class="kanban-card-score" :style="{ color: tierMeta[tier].color }">
+                        {{ Math.round(getScore(match) * 100) }}
+                      </span>
+                    </template>
+                    Overall: {{ Math.round(getScore(match) * 100) }}%
+                  </NTooltip>
+                </div>
                 <NProgress
                   type="line"
-                  :percentage="Math.round(match.overall_score * 100)"
-                  :color="match.overall_score >= 0.8 ? '#18a058' : match.overall_score >= 0.6 ? '#f0a020' : '#d03050'"
-                  :height="16"
-                  style="width: 200px;"
+                  :percentage="Math.round(getScore(match) * 100)"
+                  :color="tierMeta[tier].color"
+                  :height="8"
+                  :border-radius="4"
+                  :show-indicator="false"
+                  style="margin-bottom: 8px;"
                 />
-                <span class="score-text">{{ Math.round(match.overall_score * 100) }}%</span>
-              </div>
-              <div v-if="match.explanation" class="match-explanation">
-                {{ match.explanation }}
-              </div>
-              <div v-else-if="'missing_skills' in match && match.missing_skills?.length" class="match-explanation">
-                缺失技能：{{ match.missing_skills.join('；') }}
-              </div>
-            </NCard>
-          </NGridItem>
-        </NGrid>
-      </div>
-      <NEmpty v-else description="选择岗位后点击匹配按钮查看结果" />
-    </NSpin>
+                <div v-if="'skill_score' in match && match.skill_score != null" class="kanban-sub-score">
+                  <span>Skills: {{ Math.round(match.skill_score * 100) }}</span>
+                  <NProgress
+                    type="line"
+                    :percentage="Math.round(match.skill_score * 100)"
+                    :color="tierMeta[tier].color"
+                    :height="6"
+                    :border-radius="3"
+                    :show-indicator="false"
+                    style="flex: 1;"
+                  />
+                </div>
+                <div v-if="getMatchedSkills(match).length" class="kanban-skills">
+                  <NTag v-for="skill in getMatchedSkills(match).slice(0, 3)" :key="skill" size="tiny" type="success" style="margin: 2px;">
+                    {{ skill }}
+                  </NTag>
+                  <NTag v-if="getMatchedSkills(match).length > 3" size="tiny" style="margin: 2px;">
+                    +{{ getMatchedSkills(match).length - 3 }}
+                  </NTag>
+                </div>
+              </NCard>
+              <NEmpty v-if="!kanbanGroups[tier].length" description="-" size="small" />
+            </div>
+          </div>
+        </div>
+      </NSpin>
+    </template>
+
+    <NEmpty v-else description="Select a position and click match to see results" />
   </div>
 </template>
 
@@ -107,30 +387,208 @@ async function handleMatch() {
   gap: 12px;
   align-items: center;
   margin-bottom: 20px;
+  flex-wrap: wrap;
 }
 
-.match-row {
-  .match-info {
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 10px;
+
+  .toolbar-left {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 10px;
+    flex-wrap: wrap;
   }
 
-  .candidate-name {
-    font-weight: 500;
-    min-width: 120px;
-  }
-
-  .score-text {
-    font-weight: 600;
-    min-width: 50px;
-    text-align: right;
-  }
-
-  .match-explanation {
-    margin-top: 8px;
+  .result-count {
     font-size: 13px;
     color: $text-muted;
+  }
+}
+
+.list-view {
+  .match-row {
+    .match-row-inner {
+      display: flex;
+      gap: 16px;
+    }
+
+    .match-row-score {
+      flex-shrink: 0;
+      padding-top: 4px;
+    }
+
+    .match-row-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .match-row-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .candidate-name {
+      font-weight: 600;
+      font-size: 15px;
+      color: $text-primary;
+    }
+
+    .score-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+
+      .score-bar-label {
+        font-size: 12px;
+        color: $text-muted;
+        min-width: 70px;
+        text-align: right;
+      }
+
+      .score-bar-value {
+        font-size: 12px;
+        font-weight: 600;
+        min-width: 30px;
+        text-align: right;
+        color: $text-secondary;
+      }
+
+      &.sub-score {
+        .score-bar-label {
+          font-size: 11px;
+          min-width: 70px;
+        }
+        .score-bar-value {
+          font-size: 11px;
+        }
+      }
+    }
+
+    .skills-row {
+      margin-top: 8px;
+    }
+
+    .missing-skills-row {
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 2px;
+
+      .missing-label {
+        font-size: 11px;
+        color: $text-muted;
+        margin-right: 4px;
+      }
+    }
+
+    .match-explanation {
+      margin-top: 8px;
+      font-size: 13px;
+      color: $text-muted;
+      line-height: 1.5;
+    }
+  }
+}
+
+.kanban-view {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+
+  .kanban-column {
+    flex: 1;
+    min-width: 240px;
+    max-width: 320px;
+    background: $bg-secondary;
+    border-radius: $radius-md;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .kanban-column-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-top: 3px solid;
+    border-radius: $radius-md $radius-md 0 0;
+
+    .kanban-column-title {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .kanban-column-count {
+      font-size: 12px;
+      color: $text-muted;
+      background: $bg-card;
+      border-radius: 10px;
+      padding: 1px 8px;
+    }
+  }
+
+  .kanban-column-body {
+    padding: 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .kanban-card {
+    cursor: default;
+    transition: box-shadow $transition-fast;
+
+    &:hover {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    .kanban-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+    }
+
+    .kanban-card-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: $text-primary;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .kanban-card-score {
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .kanban-sub-score {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: $text-muted;
+      margin-bottom: 4px;
+    }
+
+    .kanban-skills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0;
+    }
   }
 }
 </style>
