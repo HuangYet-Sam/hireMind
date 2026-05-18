@@ -85,3 +85,133 @@ class OfferListResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+# ---------------------------------------------------------------------------
+# Offer Approval Schemas
+# ---------------------------------------------------------------------------
+
+class OfferApprovalCreate(BaseModel):
+    """审批操作"""
+    action: str  # approve / reject / withdraw / counter
+    comment: str | None = None
+    next_approver_id: str | None = None
+
+
+class OfferApprovalResponse(BaseModel):
+    """审批记录"""
+    id: UUID
+    offer_id: UUID
+    approver_id: str
+    approver_name: str | None
+    action: str
+    comment: str | None
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Offer Template Schemas
+# ---------------------------------------------------------------------------
+
+class OfferTemplateCreate(BaseModel):
+    """Offer模板"""
+    name: str
+    template_type: str  # technical / management / operations / standard
+    content: str  # 模板内容(支持变量占位符 {{candidate_name}} 等)
+    variables: list[str]  # 模板变量列表
+    is_default: bool = False
+
+
+class OfferTemplateResponse(BaseModel):
+    """Offer模板响应"""
+    id: UUID
+    name: str
+    template_type: str
+    content: str
+    variables: list[str]
+    is_default: bool
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Compensation Benchmark & Salary Suggestion Schemas
+# ---------------------------------------------------------------------------
+
+class CompensationBenchmark(BaseModel):
+    """薪资对标"""
+    offer_id: UUID
+    position_title: str
+    candidate_name: str
+    offered_total: float  # Offer总包
+    internal_p50: float  # 内部P50
+    internal_p75: float
+    internal_p90: float
+    market_p50: float | None  # 市场P50(如有数据)
+    market_p75: float | None
+    fairness_score: float  # 内部公平性评分 0-100
+    recommendation: str  # below_market / at_market / above_market
+
+
+class SalarySuggestion(BaseModel):
+    """AI薪资建议"""
+    suggested_base: float
+    suggested_bonus: float | None
+    suggested_equity: str | None
+    total_compensation: float
+    confidence: float  # 0-1
+    reasoning: str  # 建议理由
+    market_position: str  # below_p50 / p50_p75 / p75_p90 / above_p90
+    risk_factors: list[str]  # 风险因素
+    negotiation_strategy: str  # 谈判策略建议
+
+
+# ---------------------------------------------------------------------------
+# Additional Offer Schemas (counter, generate, negotiation)
+# ---------------------------------------------------------------------------
+
+class OfferCounterCreate(BaseModel):
+    """Counter-offer request."""
+    base_salary: int | None = None
+    annual_bonus_months: float | None = None
+    sign_on_bonus: int | None = None
+    equity: str | None = None
+    benefits_summary: str | None = None
+    notes: str | None = None
+
+
+class OfferGenerateRequest(BaseModel):
+    """AI生成Offer请求"""
+    candidate_id: UUID
+    position_id: UUID | None = None
+    template_id: UUID | None = None
+    use_ai_suggestion: bool = True
+
+
+class OfferNegotiationAdvice(BaseModel):
+    """谈判策略建议"""
+    offer_id: UUID
+    candidate_name: str
+    current_package: float
+    advice: str
+    key_negotiation_points: list[str]
+    risk_assessment: str
+    recommended_actions: list[str]
+    alternative_packages: list[dict]
+    timeline_suggestion: str
+
+
+class OfferTimelineEvent(BaseModel):
+    """Offer状态变更事件"""
+    status: str
+    changed_at: datetime
+    changed_by: str | None
+    comment: str | None
+
+
+class OfferTimelineResponse(BaseModel):
+    """Offer状态时间轴"""
+    offer_id: UUID
+    events: list[OfferTimelineEvent]

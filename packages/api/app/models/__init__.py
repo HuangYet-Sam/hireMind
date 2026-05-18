@@ -7,6 +7,7 @@ from app.models.department import Department  # noqa: F401
 from app.models.interview import Interview, InterviewFeedback  # noqa: F401
 from app.models.matching import Match, MatchFeedback  # noqa: F401
 from app.models.offer import Offer, OfferApproval  # noqa: F401
+from app.models.offer_template import OfferTemplate  # noqa: F401
 from app.models.position import Position  # noqa: F401
 from app.models.resume import Resume  # noqa: F401
 from app.models.tenant import Tenant  # noqa: F401
