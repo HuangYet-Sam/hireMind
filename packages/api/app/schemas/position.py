@@ -93,3 +93,38 @@ class PositionListResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+# ── AI Interpret / Confirm ──────────────────────────────────────
+class AIInterpretRequest(BaseModel):
+    """Request body for AI JD interpretation."""
+
+    text: str = Field(..., min_length=10, max_length=10000, description="Natural language job description")
+
+
+class AIInterpretResponse(BaseModel):
+    """Structured position data returned by AI JD interpretation."""
+
+    title: str | None = None
+    department: str | None = None
+    location: str | None = None
+    employment_type: str | None = None
+    headcount: int | None = None
+    salary_min: float | None = None
+    salary_max: float | None = None
+    description: str | None = None
+    requirements: str | None = None
+    benefits: str | None = None
+    required_skills: list[str] | None = None
+    preferred_skills: list[str] | None = None
+    education_requirement: str | None = None
+    experience_years_min: int | None = None
+    is_remote: bool | None = None
+    priority: str | None = None
+
+
+class AIConfirmRequest(BaseModel):
+    """Request body for confirming AI-interpreted JD and creating the position."""
+
+    data: AIInterpretResponse = Field(..., description="Confirmed structured position data")
+    department_id: UUID | None = Field(None, description="Department ID to attach")

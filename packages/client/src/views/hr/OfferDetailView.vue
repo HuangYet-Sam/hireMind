@@ -5,6 +5,7 @@ import { NPageHeader, NCard, NDescriptions, NDescriptionsItem, NTag, NButton, NS
 import { useMessage } from 'naive-ui'
 import { useOfferStore } from '@/stores/hr/offers'
 import * as offersApi from '@/api/hr/offers'
+import AiContextBar from '@/components/hr/AiContextBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -161,6 +162,11 @@ onMounted(() => {
 <template>
   <div class="offer-detail">
     <NPageHeader title="Offer 详情" @back="goBack" />
+
+    <AiContextBar
+      entity-type="offer"
+      :entity-id="(route.params.id as string)"
+    />
 
     <NSpin :show="offerStore.loading">
       <template v-if="offer">

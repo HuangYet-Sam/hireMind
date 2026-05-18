@@ -13,6 +13,7 @@ import type { DataTableColumns } from 'naive-ui'
 import ResumeViewer from '@/components/hr/ResumeViewer.vue'
 import InterviewTimeline from '@/components/hr/InterviewTimeline.vue'
 import OfferStatusBadge from '@/components/hr/OfferStatusBadge.vue'
+import AiContextBar from '@/components/hr/AiContextBar.vue'
 import type { Resume } from '@/api/hr/resumes'
 import type { Interview } from '@/api/hr/interviews'
 import type { Offer } from '@/api/hr/offers'
@@ -46,6 +47,7 @@ const sourceLabelMap: Record<string, string> = {
 
 const showResumeViewer = ref(false)
 const viewingResume = ref<Resume | null>(null)
+const activeTab = ref('profile')
 
 function handleViewResume(row: Resume) {
   viewingResume.value = row
@@ -207,7 +209,13 @@ onMounted(async () => {
         </template>
       </NPageHeader>
 
-      <NTabs type="line" style="margin-top: 20px;">
+      <AiContextBar
+        entity-type="candidate"
+        :entity-id="(route.params.id as string)"
+        :active-tab="activeTab"
+      />
+
+      <NTabs v-model:value="activeTab" type="line" style="margin-top: 20px;">
         <NTabPane name="profile" tab="基本信息">
           <NCard>
             <NDescriptions label-placement="left" :column="2" bordered>

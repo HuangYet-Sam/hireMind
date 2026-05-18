@@ -367,6 +367,53 @@ Return JSON:
             max_tokens=1024,
         )
 
+    async def interpret_jd(self, jd_text: str) -> dict | None:
+        """
+        Interpret a natural-language job description into structured position data.
+
+        Returns a JSON dict matching AIInterpretResponse fields, or None.
+        """
+        system_prompt = """You are an expert HR assistant specializing in job description analysis.
+Given a natural-language job description, extract and return structured position data as JSON.
+
+Return JSON with these exact fields:
+{
+  "title": "Position title",
+  "department": "Department name if mentioned",
+  "location": "Work location",
+  "employment_type": "full_time / part_time / contract / internship",
+  "headcount": 1,
+  "salary_min": null,
+  "salary_max": null,
+  "description": "Full job description",
+  "requirements": "Job requirements text",
+  "benefits": "Benefits text",
+  "required_skills": ["skill1", "skill2"],
+  "preferred_skills": ["skill1"],
+  "education_requirement": "Minimum education level",
+  "experience_years_min": 3,
+  "is_remote": false,
+  "priority": "normal"
+}
+
+Rules:
+- Extract ONLY information explicitly stated or clearly implied
+- Use null for fields where no information is provided
+- required_skills and preferred_skills should be individual items
+- salary values should be monthly in CNY if specified
+- Return valid JSON only, no markdown"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Analyze this job description:\n\n{jd_text}"},
+        ]
+
+        return await self.chat_completion(
+            messages,
+            response_format={"type": "json_object"},
+            max_tokens=4096,
+        )
+
 
 # Singleton instance
 ai_client = AIClient()

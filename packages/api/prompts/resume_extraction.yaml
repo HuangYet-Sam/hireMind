@@ -1,0 +1,170 @@
+# SmartResume 结构化抽取 Prompt 模板
+# 7 类字段: 基本信息 / 工作经历 / 教育背景 / 技能 / 证书 / 语言 / 项目经验
+# 版本: v2
+# 模型: gpt-4.1-mini / gpt-4o-mini
+
+system_prompt: |
+  You are a professional resume parsing engine. Your task is to extract structured
+  information from the provided resume text and return a single valid JSON object.
+
+  Extraction rules:
+  - Extract ONLY information explicitly stated in the resume.
+  - Use null for any field where the value is unknown or not mentioned.
+  - Dates must follow "YYYY-MM" format. Use "present" for ongoing positions.
+  - Numbers (years_of_experience, gpa) must be numeric or null.
+  - Return valid JSON only — no markdown, no explanation, no trailing commas.
+
+schema:
+  basic_info:
+    description: "Personal / contact information"
+    fields:
+      name: { type: "string | null", description: "Full name" }
+      phone: { type: "string | null", description: "Phone number" }
+      email: { type: "string | null", description: "Email address" }
+      gender: { type: "string | null", description: "Gender if stated" }
+      age: { type: "integer | null", description: "Age if stated" }
+      birthday: { type: "string | null", description: "Date of birth (YYYY-MM-DD) if stated" }
+      location: { type: "string | null", description: "Current city / region" }
+      id_number: { type: "string | null", description: "ID / passport number if stated" }
+
+  work_experience:
+    description: "Professional work history"
+    is_array: true
+    fields:
+      company: { type: "string | null", description: "Company name" }
+      title: { type: "string | null", description: "Job title" }
+      department: { type: "string | null", description: "Department" }
+      start_date: { type: "string | null", description: "Start date (YYYY-MM)" }
+      end_date: { type: "string | null", description: "End date (YYYY-MM or 'present')" }
+      responsibilities: { type: "string | null", description: "Key responsibilities" }
+      achievements: { type: "string | null", description: "Notable achievements" }
+
+  education:
+    description: "Academic background"
+    is_array: true
+    fields:
+      school: { type: "string | null", description: "Institution name" }
+      degree: { type: "string | null", description: "Degree level (Bachelor / Master / PhD / Associate)" }
+      major: { type: "string | null", description: "Field of study" }
+      start_date: { type: "string | null", description: "Start date (YYYY-MM)" }
+      end_date: { type: "string | null", description: "End date (YYYY-MM)" }
+      gpa: { type: "number | null", description: "GPA score" }
+
+  skills:
+    description: "Technical and professional skills"
+    is_array: true
+    fields:
+      name: { type: "string", description: "Skill name" }
+      proficiency: { type: "string | null", description: "Proficiency level (beginner / intermediate / advanced / expert)" }
+      years_of_experience: { type: "number | null", description: "Years of experience with this skill" }
+
+  certifications:
+    description: "Professional certifications and licenses"
+    is_array: true
+    fields:
+      name: { type: "string", description: "Certification name" }
+      issuer: { type: "string | null", description: "Issuing organization" }
+      date: { type: "string | null", description: "Issue date (YYYY-MM)" }
+      expiry_date: { type: "string | null", description: "Expiry date (YYYY-MM)" }
+      credential_id: { type: "string | null", description: "Credential / certificate ID" }
+
+  languages:
+    description: "Language proficiencies"
+    is_array: true
+    fields:
+      language: { type: "string", description: "Language name" }
+      proficiency: { type: "string | null", description: "Proficiency level (basic / conversational / fluent / native)" }
+      certification: { type: "string | null", description: "Language certification (e.g. IELTS 7.0, CET-6)" }
+
+  projects:
+    description: "Notable project experience"
+    is_array: true
+    fields:
+      name: { type: "string", description: "Project name" }
+      role: { type: "string | null", description: "Role in the project" }
+      start_date: { type: "string | null", description: "Start date (YYYY-MM)" }
+      end_date: { type: "string | null", description: "End date (YYYY-MM)" }
+      description: { type: "string | null", description: "Brief description" }
+      technologies: { type: "array[string] | null", description: "Technologies used" }
+      url: { type: "string | null", description: "Project URL if available" }
+
+output_format:
+  type: "json_object"
+  example: |
+    {
+      "basic_info": {
+        "name": null,
+        "phone": null,
+        "email": null,
+        "gender": null,
+        "age": null,
+        "birthday": null,
+        "location": null,
+        "id_number": null
+      },
+      "work_experience": [
+        {
+          "company": null,
+          "title": null,
+          "department": null,
+          "start_date": null,
+          "end_date": null,
+          "responsibilities": null,
+          "achievements": null
+        }
+      ],
+      "education": [
+        {
+          "school": null,
+          "degree": null,
+          "major": null,
+          "start_date": null,
+          "end_date": null,
+          "gpa": null
+        }
+      ],
+      "skills": [
+        {
+          "name": "Python",
+          "proficiency": "expert",
+          "years_of_experience": 5
+        }
+      ],
+      "certifications": [
+        {
+          "name": "AWS Solutions Architect",
+          "issuer": "Amazon",
+          "date": "2023-06",
+          "expiry_date": null,
+          "credential_id": null
+        }
+      ],
+      "languages": [
+        {
+          "language": "Chinese",
+          "proficiency": "native",
+          "certification": null
+        },
+        {
+          "language": "English",
+          "proficiency": "fluent",
+          "certification": "IELTS 7.5"
+        }
+      ],
+      "projects": [
+        {
+          "name": "E-commerce Platform",
+          "role": "Backend Lead",
+          "start_date": "2022-01",
+          "end_date": "2023-03",
+          "description": "Built a microservices-based e-commerce platform",
+          "technologies": ["Python", "FastAPI", "PostgreSQL", "Redis"],
+          "url": null
+        }
+      ]
+    }
+
+model_settings:
+  temperature: 0.1
+  max_tokens: 4096
+  timeout_seconds: 30

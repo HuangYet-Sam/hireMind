@@ -9,6 +9,7 @@ import {
 } from 'naive-ui'
 import { useMessage } from 'naive-ui'
 import * as interviewsApi from '@/api/hr/interviews'
+import AiContextBar from '@/components/hr/AiContextBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -134,6 +135,11 @@ onMounted(() => {
   <div class="interview-detail">
     <NSpin :show="interviewStore.loading">
       <NPageHeader title="面试详情" @back="goBack" />
+
+      <AiContextBar
+        entity-type="interview"
+        :entity-id="(route.params.id as string)"
+      />
 
       <NCard title="面试信息" style="margin-top: 16px">
         <NDescriptions v-if="interview" :column="2" bordered>

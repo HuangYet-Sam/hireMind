@@ -12,6 +12,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.dependencies import CurrentUser, CurrentUserDep, DbSession, PaginationDep, require_role
 from app.schemas.position import (
+    AIConfirmRequest,
+    AIInterpretRequest,
+    AIInterpretResponse,
     PositionCreate,
     PositionListResponse,
     PositionResponse,
@@ -69,6 +72,50 @@ async def create_position(
             data=payload,
             tenant_id=current_user.tenant_id,
             user_id=current_user.user_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return position
+
+
+@router.post(
+    "/ai-interpret",
+    response_model=AIInterpretResponse,
+    summary="AI interpret job description",
+)
+async def ai_interpret_jd(
+    payload: AIInterpretRequest,
+    db: DbSession,
+    current_user: CurrentUserDep,
+):
+    """Use AI to parse a natural-language job description into structured data."""
+    service = PositionService(db)
+    try:
+        result = await service.ai_interpret_jd(text=payload.text)
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+    return result
+
+
+@router.post(
+    "/ai-confirm",
+    response_model=PositionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Confirm AI-interpreted JD and create position",
+)
+async def ai_confirm_jd(
+    payload: AIConfirmRequest,
+    db: DbSession,
+    current_user: _RecruiterOrAbove,
+):
+    """Create a draft position from AI-interpreted JD data."""
+    service = PositionService(db)
+    try:
+        position = await service.ai_confirm_jd(
+            data=payload.data.model_dump(exclude_none=True),
+            tenant_id=current_user.tenant_id,
+            user_id=current_user.user_id,
+            department_id=payload.department_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))

@@ -12,6 +12,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile, sta
 from app.dependencies import CurrentUserDep, DbSession, PaginationDep
 from app.schemas.resume import (
     ResumeListResponse,
+    ResumeParseRequest,
     ResumeParseResult,
     ResumeResponse,
 )
@@ -79,6 +80,30 @@ async def upload_resume(
             raise HTTPException(status_code=409, detail=str(e))
         raise
     return resume
+
+
+@router.post(
+    "/parse",
+    response_model=ResumeParseResult,
+    summary="AI resume parsing",
+)
+async def ai_parse_resume(
+    payload: ResumeParseRequest,
+    db: DbSession,
+    current_user: CurrentUserDep,
+):
+    """Trigger AI-powered resume parsing with PII masking."""
+    service = ResumeService(db)
+    try:
+        result = await service.parse_resume(
+            resume_id=payload.resume_id,
+            tenant_id=current_user.tenant_id,
+        )
+    except ValueError as e:
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail="Resume not found")
+        raise
+    return result
 
 
 @router.get("/{resume_id}", response_model=ResumeResponse, summary="Get resume")

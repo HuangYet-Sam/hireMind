@@ -47,3 +47,9 @@ class ResumeListResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class ResumeParseRequest(BaseModel):
+    """Request body for AI resume parsing via the /parse endpoint."""
+
+    resume_id: UUID = Field(..., description="ID of the uploaded resume to parse")

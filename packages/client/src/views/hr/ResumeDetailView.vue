@@ -7,6 +7,7 @@ import {
   NTag, NButton, NSpace, NSpin, NEmpty, NCode,
 } from 'naive-ui'
 import type { Resume } from '@/api/hr/resumes'
+import AiContextBar from '@/components/hr/AiContextBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,6 +44,7 @@ function formatFileSize(bytes: number): string {
 }
 
 const reparsing = ref(false)
+const activeTab = ref('info')
 
 async function handleReparse() {
   if (!resume.value) return
@@ -105,7 +107,13 @@ onMounted(async () => {
         </template>
       </NPageHeader>
 
-      <NTabs type="line" style="margin-top: 20px;">
+      <AiContextBar
+        entity-type="resume"
+        :entity-id="(route.params.id as string)"
+        :active-tab="activeTab"
+      />
+
+      <NTabs v-model:value="activeTab" type="line" style="margin-top: 20px;">
         <NTabPane name="info" tab="基本信息">
           <NCard>
             <NDescriptions label-placement="left" :column="2" bordered>

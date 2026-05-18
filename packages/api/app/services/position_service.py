@@ -4,15 +4,22 @@ Position Service.
 Business logic for creating, querying, and managing job positions.
 """
 
+import json
+import logging
 import re
 from uuid import UUID
 
 from sqlalchemy import func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.decorators.ai_capability import AiCapability
 from app.models.department import Department
 from app.models.position import Position
 from app.schemas.position import PositionCreate, PositionUpdate
+from app.services.ai_client import ai_client
+from app.services.pii_masking import PIIMaskingService
+
+logger = logging.getLogger("hiremind.position")
 
 _VALID_TRANSITIONS: dict[str, set[str]] = {
     "draft": {"open"},
@@ -165,3 +172,106 @@ class PositionService:
         )
         await self.db.execute(stmt)
         await self.db.flush()
+
+    # ── AI Capabilities ──────────────────────────────────────────
+
+    @AiCapability(
+        capability="ai_interpret_jd",
+        name="AI JD Interpretation",
+        endpoint="/api/v1/positions/ai-interpret",
+        method="POST",
+        tool_name="interpret_jd",
+        permissions=["position:create"],
+        llm_model="gpt-4",
+        fallback_model="gpt-3.5-turbo",
+        prompt_version="v1",
+        allowed_callers=["api", "agent"],
+        requires_tenant_isolation=True,
+        ai_capability_id="position_ai_interpret_jd",
+        description="AI interprets natural language JD into structured position data",
+        request_model="AIInterpretRequest",
+        response_model="AIInterpretResponse",
+        rate_limit="30/minute",
+        data_classification="L2",
+        audit_level="detailed",
+        tags=["ai", "jd", "position"],
+        timeout=30.0,
+        cache_ttl=300,
+    )
+    async def ai_interpret_jd(self, text: str) -> dict:
+        """
+        Use AI to interpret a natural-language job description.
+
+        Flow: mask PII → LLM call → unmask PII → return structured data.
+        """
+        pii = PIIMaskingService()
+
+        masked_text, mapping = await pii.mask(text)
+
+        raw = await ai_client.interpret_jd(masked_text)
+        if raw is None:
+            raise ValueError("AI JD interpretation failed: no response from LLM")
+
+        # Unmask any PII that the LLM echoed back
+        unmasked_raw = await pii.unmask(json.dumps(raw, ensure_ascii=False), mapping)
+        result = json.loads(unmasked_raw)
+
+        logger.info("ai_interpret_jd completed title=%s", result.get("title"))
+        return result
+
+    @AiCapability(
+        capability="ai_confirm_jd",
+        name="AI JD Confirm & Create",
+        endpoint="/api/v1/positions/ai-confirm",
+        method="POST",
+        tool_name="confirm_jd",
+        permissions=["position:create"],
+        llm_model="gpt-4",
+        allowed_callers=["api"],
+        requires_tenant_isolation=True,
+        ai_capability_id="position_ai_confirm_jd",
+        description="Confirm AI-interpreted JD and create position as draft",
+        request_model="AIConfirmRequest",
+        response_model="PositionResponse",
+        rate_limit="30/minute",
+        data_classification="L2",
+        audit_level="detailed",
+        tags=["ai", "jd", "position", "create"],
+        timeout=15.0,
+    )
+    async def ai_confirm_jd(
+        self,
+        data: dict,
+        tenant_id: str,
+        user_id: str,
+        department_id: UUID | None = None,
+    ) -> Position:
+        """
+        Create a position from AI-interpreted structured data (status=draft).
+        """
+        create_data = PositionCreate(
+            title=data.get("title", "Untitled Position"),
+            department_id=department_id,
+            location=data.get("location"),
+            employment_type=data.get("employment_type", "full_time"),
+            headcount=data.get("headcount", 1),
+            priority=data.get("priority", "normal"),
+            salary_min=data.get("salary_min"),
+            salary_max=data.get("salary_max"),
+            description=data.get("description"),
+            requirements=data.get("requirements"),
+            benefits=data.get("benefits"),
+            required_skills=[{"name": s} for s in data.get("required_skills") or []],
+            preferred_skills=data.get("preferred_skills"),
+            education_requirement=data.get("education_requirement"),
+            experience_years_min=data.get("experience_years_min"),
+            is_remote=data.get("is_remote", False),
+        )
+
+        position = await self.create(
+            data=create_data,
+            tenant_id=tenant_id,
+            user_id=user_id,
+        )
+        logger.info("ai_confirm_jd created position_id=%s title=%s", position.id, position.title)
+        return position

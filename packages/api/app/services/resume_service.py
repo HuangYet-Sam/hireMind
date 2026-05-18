@@ -5,6 +5,8 @@ Business logic for resume upload, storage, AI parsing, and retrieval.
 """
 
 import hashlib
+import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -12,7 +14,11 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.decorators.ai_capability import AiCapability
 from app.models.resume import Resume
+from app.services.pii_masking import PIIMaskingService
+
+logger = logging.getLogger("hiremind.resume")
 
 
 class ResumeService:
@@ -187,3 +193,70 @@ class ResumeService:
 
         await self.db.delete(resume)
         await self.db.flush()
+
+    # ── AI Capability ────────────────────────────────────────────
+
+    @AiCapability(
+        capability="resume_parse",
+        name="AI Resume Parsing",
+        endpoint="/api/v1/resumes/parse",
+        method="POST",
+        tool_name="parse_resume",
+        permissions=["resume:parse"],
+        llm_model="gpt-4",
+        fallback_model="gpt-3.5-turbo",
+        prompt_version="v1",
+        allowed_callers=["api", "agent"],
+        requires_tenant_isolation=True,
+        ai_capability_id="resume_ai_parse",
+        description="AI-powered resume parsing into structured candidate data",
+        request_model="ResumeParseRequest",
+        response_model="ResumeParseResult",
+        rate_limit="20/minute",
+        data_classification="L3",
+        audit_level="detailed",
+        tags=["ai", "resume", "parse"],
+        timeout=45.0,
+    )
+    async def parse_resume(self, resume_id: UUID, tenant_id: str) -> dict:
+        """
+        AI-powered resume parsing with PII masking.
+
+        Flow: read file → mask PII → LLM parse → unmask → update parsed_data.
+        """
+        resume = await self.get_by_id(resume_id, tenant_id)
+        if resume is None:
+            raise ValueError("Resume not found")
+
+        resume.parse_status = "processing"
+        await self.db.flush()
+
+        pii = PIIMaskingService()
+        parsed_data = None
+
+        resume_text = self._read_file_content(resume.file_path)
+        if resume_text:
+            masked_text, mapping = await pii.mask(resume_text)
+
+            from app.services.ai_client import ai_client
+            raw = await ai_client.parse_resume_with_ai(masked_text)
+
+            if raw is not None:
+                unmasked = await pii.unmask(json.dumps(raw, ensure_ascii=False), mapping)
+                parsed_data = json.loads(unmasked)
+
+        if parsed_data is None:
+            parsed_data = self._generate_fallback_parse(resume)
+
+        resume.parse_status = "completed"
+        resume.parsed_at = datetime.now(timezone.utc).isoformat()
+        resume.parsed_data = parsed_data
+        await self.db.flush()
+        await self.db.refresh(resume)
+
+        logger.info("parse_resume completed resume_id=%s", resume_id)
+        return {
+            "resume_id": resume.id,
+            "parse_status": resume.parse_status,
+            "parsed_data": resume.parsed_data,
+        }

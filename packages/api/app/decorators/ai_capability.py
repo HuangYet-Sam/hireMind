@@ -3,24 +3,81 @@
 
 Marks an endpoint or service method as requiring AI capabilities.
 Supports capability discovery, rate limiting, fallback handling,
-and health-check-based gating.
+health-check-based gating, and full metadata registration for code generation.
 """
 
+from __future__ import annotations
+
+import asyncio
 import functools
 import logging
+import threading
 import time
 from typing import Any, Callable
 
 logger = logging.getLogger("hiremind.ai")
 
-# Track last health check time per capability
+# ---------------------------------------------------------------------------
+# Health-check cache (internal)
+# ---------------------------------------------------------------------------
 _health_cache: dict[str, tuple[bool, float]] = {}
 _HEALTH_CHECK_INTERVAL = 60.0  # seconds between health checks
 
+# ---------------------------------------------------------------------------
+# Thread-safe global registry for AI capability metadata
+# ---------------------------------------------------------------------------
+_AI_CAPABILITIES_REGISTRY: dict[str, dict[str, Any]] = {}
+_registry_lock = threading.Lock()
 
+
+def _register_capability(meta: dict[str, Any]) -> None:
+    """Thread-safe insert into the global registry."""
+    key = meta.get("ai_capability_id") or meta.get("capability")
+    if not key:
+        logger.warning("Skipping capability registration: no identifier")
+        return
+    with _registry_lock:
+        _AI_CAPABILITIES_REGISTRY[key] = meta
+
+
+def get_all_capabilities() -> dict[str, dict[str, Any]]:
+    """Return a shallow copy of every registered capability's metadata."""
+    with _registry_lock:
+        return dict(_AI_CAPABILITIES_REGISTRY)
+
+
+def get_capability(name: str) -> dict[str, Any] | None:
+    """Look up a single capability by *ai_capability_id* or *capability*."""
+    with _registry_lock:
+        return _AI_CAPABILITIES_REGISTRY.get(name)
+
+
+# ---------------------------------------------------------------------------
+# Decorator
+# ---------------------------------------------------------------------------
 def AiCapability(
     capability: str,
     *,
+    # -- new fields (PRD §8.1a) -------------------------------------------
+    name: str | None = None,
+    endpoint: str | None = None,
+    method: str = "POST",
+    tool_name: str | None = None,
+    permissions: list[str] | None = None,
+    llm_model: str | None = None,
+    fallback_model: str | None = None,
+    prompt_version: str | None = None,
+    allowed_callers: list[str] | None = None,
+    requires_tenant_isolation: bool = False,
+    ai_capability_id: str | None = None,
+    description: str | None = None,
+    request_model: str | None = None,
+    response_model: str | None = None,
+    rate_limit: str | None = None,
+    data_classification: str = "L2",
+    audit_level: str = "standard",
+    tags: list[str] | None = None,
+    # -- existing fields ---------------------------------------------------
     fallback: Callable | None = None,
     timeout: float = 30.0,
     cache_ttl: int | None = None,
@@ -28,14 +85,66 @@ def AiCapability(
     """
     Decorator that marks a function as requiring an AI capability.
 
+    Registers full metadata in ``_AI_CAPABILITIES_REGISTRY`` so that code
+    generators and discovery tools can introspect available capabilities at
+    runtime.
+
     Args:
-        capability: Name of the AI capability (e.g. "resume_parse", "candidate_match").
-        fallback: Optional fallback function if AI is unavailable.
-        timeout: Maximum seconds to wait for AI response.
-        cache_ttl: Cache result for this many seconds (None = no cache).
+        capability: Short identifier (e.g. ``"resume_parse"``).
+        name: Human-readable display name.
+        endpoint: FastAPI route path (e.g. ``"/api/v1/ai/resume-parse"``).
+        method: HTTP method (``"GET"`` / ``"POST"``).  Defaults to ``"POST"``.
+        tool_name: Name exposed to Agent tools.
+        permissions: Required permission identifiers.
+        llm_model: Primary LLM model identifier.
+        fallback_model: Backup LLM model identifier.
+        prompt_version: Prompt template version tag.
+        allowed_callers: ``["api", "agent"]`` etc.
+        requires_tenant_isolation: Whether tenant data must be isolated.
+        ai_capability_id: Globally unique capability identifier.
+        description: Free-text description of the capability.
+        request_model: Pydantic model class name for the request body.
+        response_model: Pydantic model class name for the response body.
+        rate_limit: Rate-limit expression (e.g. ``"100/minute"``).
+        data_classification: ``"L1"``–``"L4"``.  Defaults to ``"L2"``.
+        audit_level: ``"standard"`` / ``"detailed"`` / ``"none"``.
+        tags: Arbitrary string tags.
+        fallback: Callable invoked when AI is unavailable or the wrapped
+            function raises.  Must be async if the wrapped function is async.
+        timeout: Max seconds to wait for AI response.
+        cache_ttl: Cache the result for this many seconds (``None`` = no cache).
     """
 
+    meta: dict[str, Any] = {
+        "capability": capability,
+        "name": name,
+        "endpoint": endpoint,
+        "method": method,
+        "tool_name": tool_name,
+        "permissions": permissions,
+        "llm_model": llm_model,
+        "fallback_model": fallback_model,
+        "prompt_version": prompt_version,
+        "allowed_callers": allowed_callers,
+        "requires_tenant_isolation": requires_tenant_isolation,
+        "ai_capability_id": ai_capability_id,
+        "description": description,
+        "request_model": request_model,
+        "response_model": response_model,
+        "rate_limit": rate_limit,
+        "data_classification": data_classification,
+        "audit_level": audit_level,
+        "tags": tags,
+        "timeout": timeout,
+        "cache_ttl": cache_ttl,
+    }
+
     def decorator(func: Callable) -> Callable:
+        # Register before wrapping so metadata is available immediately.
+        meta["qualified_name"] = func.__qualname__
+        meta["module"] = func.__module__
+        _register_capability(meta)
+
         @functools.wraps(func)
         async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
             logger.info(
@@ -55,7 +164,6 @@ def AiCapability(
                 )
                 if fallback is not None:
                     return await fallback(*args, **kwargs)
-                # If no fallback, proceed anyway (the function itself should handle AI absence)
 
             start = time.monotonic()
             try:
@@ -94,7 +202,6 @@ def AiCapability(
                     return fallback(*args, **kwargs)
                 raise
 
-        import asyncio
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         return sync_wrapper
@@ -102,6 +209,9 @@ def AiCapability(
     return decorator
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 def _check_ai_availability(capability: str) -> bool:
     """
     Check if the required AI capability is available.
@@ -113,9 +223,9 @@ def _check_ai_availability(capability: str) -> bool:
         if now - last_check < _HEALTH_CHECK_INTERVAL:
             return available
 
-    # Quick config-based check (no async HTTP call in sync context)
     try:
         from app.config import settings
+
         available = bool(settings.OPENAI_API_KEY)
     except Exception:
         available = False

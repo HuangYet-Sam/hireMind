@@ -25,6 +25,7 @@ import {
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import type { Candidate } from '@/api/hr/candidates'
+import AiContextBar from '@/components/hr/AiContextBar.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,6 +37,7 @@ const matchingStore = useMatchingStore()
 const position = computed(() => positionStore.current)
 const candidatesLoaded = ref(false)
 const matchingStarted = ref(false)
+const activeTab = ref('info')
 
 const employmentTypeMap: Record<string, string> = {
   full_time: '全职',
@@ -144,6 +146,7 @@ async function handleReopen() {
 }
 
 async function handleTabChange(name: string) {
+  activeTab.value = name
   if (name === 'candidates' && !candidatesLoaded.value) {
     try {
       await candidateStore.fetchCandidates({ position_id: route.params.id as string })
@@ -191,6 +194,12 @@ async function handleMatch() {
           </NSpace>
         </template>
       </NPageHeader>
+
+      <AiContextBar
+        entity-type="position"
+        :entity-id="(route.params.id as string)"
+        :active-tab="activeTab"
+      />
 
       <NTabs
         v-if="position"
